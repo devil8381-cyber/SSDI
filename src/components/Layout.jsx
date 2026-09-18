@@ -1,0 +1,155 @@
+import { useEffect, useRef, useState } from 'react'
+import { NavLink, useNavigate } from 'react-router-dom'
+import {
+  LayoutDashboard, Users2, ClipboardList, FileText, MessageSquareText, ScrollText,
+  UserCog, Plug, Send, Bell, LogOut, Menu, X, Headphones,
+} from 'lucide-react'
+import { api } from '../api'
+import { useAuth } from '../auth'
+import { fmtDateTime } from '../ui'
+
+const NAV = [
+  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/leads', label: 'Leads', icon: Users2 },
+  { to: '/tasks', label: 'Tasks', icon: ClipboardList },
+  { to: '/documents', label: 'Documents', icon: FileText },
+  { to: '/scripts', label: 'Scripts', icon: ScrollText },
+  { to: '/templates', label: 'Templates', icon: MessageSquareText },
+]
+const ADMIN_NAV = [
+  { to: '/admin/users', label: 'Users', icon: UserCog },
+  { to: '/admin/smtp', label: 'SMTP Servers', icon: Send },
+  { to: '/admin/integrations', label: 'Integrations', icon: Plug },
+]
+
+export default function Layout({ children }) {
+  const { profile, signOut } = useAuth()
+  const navigate = useNavigate()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [notifs, setNotifs] = useState([])
+  const [notifOpen, setNotifOpen] = useState(false)
+  const bellRef = useRef(null)
+
+  // active-time heartbeat: pings only while the tab is visible
+  useEffect(() => {
+    let visible = !document.hidden
+    const onVis = () => { visible = !document.hidden }
+    document.addEventListener('visibilitychange', onVis)
+    const iv = setInterval(() => {
+      if (visible) api('/heartbeat', { method: 'POST', body: { seconds: 60 } }).catch(() => {})
+    }, 60000)
+    return () => { document.removeEventListener('visibilitychange', onVis); clearInterval(iv) }
+  }, [])
+
+  const loadNotifs = () => api('/notifications').then((d) => setNotifs(d.notifications || [])).catch(() => {})
+  useEffect(() => {
+    loadNotifs()
+    const iv = setInterval(loadNotifs, 45000)
+    return () => clearInterval(iv)
+  }, [])
+  useEffect(() => {
+    const close = (e) => { if (bellRef.current && !bellRef.current.contains(e.target)) setNotifOpen(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [])
+  const unread = notifs.filter((n) => !n.read).length
+
+  const markRead = async () => {
+    const ids = notifs.filter((n) => !n.read).map((n) => n.id)
+    if (ids.length) await api('/notifications/read', { method: 'POST', body: { ids } }).catch(() => {})
+    setNotifs((ns) => ns.map((n) => ({ ...n, read: true })))
+  }
+
+  const NavItem = ({ item }) => (
+    <NavLink
+      to={item.to}
+      end={item.to === '/'}
+      onClick={() => setSidebarOpen(false)}
+      className={({ isActive }) =>
+        `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition ${
+          isActive ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+        }`}
+    >
+      <item.icon size={17} />
+      {item.label}
+    </NavLink>
+  )
+
+  return (
+    <div className="flex min-h-screen">
+      {/* sidebar */}
+      <aside className={`fixed inset-y-0 left-0 z-40 flex w-60 flex-col bg-slate-900 transition-transform lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex items-center gap-2.5 px-5 py-5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-white"><Headphones size={19} /></div>
+          <div>
+            <p className="text-[15px] font-bold leading-tight text-white">LeadDesk</p>
+            <p className="text-[10px] font-medium uppercase tracking-widest text-slate-400">SSDI CRM</p>
+          </div>
+          <button className="ml-auto text-slate-400 lg:hidden" onClick={() => setSidebarOpen(false)}><X size={18} /></button>
+        </div>
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
+          {NAV.map((item) => <NavItem key={item.to} item={item} />)}
+          {profile?.role === 'admin' && (
+            <>
+              <p className="px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-widest text-slate-500">Administration</p>
+              {ADMIN_NAV.map((item) => <NavItem key={item.to} item={item} />)}
+            </>
+          )}
+        </nav>
+        <div className="border-t border-slate-800 p-3">
+          <div className="flex items-center gap-2.5 rounded-lg px-2 py-2">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-500/20 text-sm font-semibold text-brand-300">
+              {(profile?.name || '?').slice(0, 1).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-white">{profile?.name}</p>
+              <p className="truncate text-[11px] capitalize text-slate-400">{profile?.role}</p>
+            </div>
+            <button
+              onClick={async () => { await signOut(); navigate('/login') }}
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-rose-400" title="Sign out"
+            ><LogOut size={16} /></button>
+          </div>
+        </div>
+      </aside>
+      {sidebarOpen && <div className="fixed inset-0 z-30 bg-slate-900/50 lg:hidden" onClick={() => setSidebarOpen(false)} />}
+
+      {/* main */}
+      <div className="flex min-h-screen w-full flex-col lg:pl-60">
+        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur lg:px-8">
+          <button className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden" onClick={() => setSidebarOpen(true)}><Menu size={20} /></button>
+          <div className="flex-1" />
+          <div className="relative" ref={bellRef}>
+            <button
+              onClick={() => { setNotifOpen((o) => !o); if (unread) markRead() }}
+              className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+            >
+              <Bell size={19} />
+              {unread > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">{unread}</span>}
+            </button>
+            {notifOpen && (
+              <div className="absolute right-0 mt-2 w-80 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                <p className="border-b border-slate-100 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Notifications</p>
+                <div className="max-h-80 overflow-y-auto">
+                  {notifs.length === 0 && <p className="px-4 py-6 text-center text-sm text-slate-400">Nothing yet</p>}
+                  {notifs.map((n) => (
+                    <button
+                      key={n.id}
+                      onClick={() => { if (n.lead_id) { setNotifOpen(false); navigate(`/leads/${n.lead_id}`) } }}
+                      className="block w-full border-b border-slate-50 px-4 py-3 text-left hover:bg-slate-50"
+                    >
+                      <p className="text-sm font-medium text-slate-700">{n.title}</p>
+                      {n.body && <p className="mt-0.5 text-xs text-slate-500">{n.body}</p>}
+                      <p className="mt-1 text-[10px] text-slate-400">{fmtDateTime(n.created_at)}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </header>
+        <main className="flex-1 px-4 py-6 lg:px-8">{children}</main>
+      </div>
+    </div>
+  )
+}

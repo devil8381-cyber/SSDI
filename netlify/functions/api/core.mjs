@@ -1,0 +1,298 @@
+import { route } from './_router.mjs'
+import {
+  service, json, fail, getSession, unauthorized, notify, today,
+} from '../_lib.mjs'
+
+const isAdmin = (p) => p?.role === 'admin'
+
+// ── me ────────────────────────────────────────────────────────
+route('GET', 'me', async ({ req }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  return json({ profile: s.profile })
+})
+
+// ── heartbeat (active-time tracking) ──────────────────────────
+route('POST', 'heartbeat', async ({ req, body }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  const seconds = Math.max(0, Math.min(300, Number(body.seconds) || 60))
+  await service.rpc('increment_activity', {
+    p_user: s.user.id, p_day: today(), p_seconds: seconds, p_pings: 1,
+  })
+  await service.from('profiles').update({ last_active_at: new Date().toISOString() }).eq('id', s.user.id)
+  return json({ ok: true })
+})
+
+// ── dashboard ─────────────────────────────────────────────────
+route('GET', 'dashboard', async ({ req }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  const admin = isAdmin(s.profile)
+  const me = s.user.id
+
+  const leadQ = service.from('leads').select('id,disposition,created_at,assigned_to,next_followup_at,first_name,last_name,phone,email').limit(20000)
+  if (!admin) leadQ.eq('assigned_to', me)
+  const { data: leads } = await leadQ
+
+  const msgQ = service.from('email_messages').select('id,created_at,sent_by,opens').limit(20000)
+  if (!admin) msgQ.eq('sent_by', me)
+  const { data: emails } = await msgQ
+
+  const byDisposition = {}
+  for (const l of leads || []) byDisposition[l.disposition] = (byDisposition[l.disposition] || 0) + 1
+  const total = (leads || []).length
+  const signed = (byDisposition.Signed || 0) + (byDisposition.Approved || 0)
+
+  const dayKey = (iso) => (iso || '').slice(0, 10)
+  const todayK = today()
+  const series = []
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10)
+    series.push({
+      day: d,
+      leads: (leads || []).filter((l) => dayKey(l.created_at) === d).length,
+      emails: (emails || []).filter((m) => dayKey(m.created_at) === d).length,
+      opens: (emails || []).filter((m) => (m.last_opened_at || '').slice(0, 10) === d).length,
+    })
+  }
+
+  const endOfDay = todayK + 'T23:59:59'
+  const fuTaskQ = service.from('tasks').select('id,title,type,due_at,lead_id,leads(first_name,last_name,phone)').eq('status', 'open').lte('due_at', endOfDay).order('due_at').limit(10)
+  if (!admin) fuTaskQ.eq('assigned_to', me)
+  const { data: dueTasks } = await fuTaskQ
+
+  const fuLeadQ = service.from('leads').select('id,first_name,last_name,phone,next_followup_at,disposition').not('next_followup_at', 'is', null).lte('next_followup_at', endOfDay).neq('disposition', 'Signed').neq('disposition', 'Approved').neq('disposition', 'Not Interested').order('next_followup_at').limit(10)
+  if (!admin) fuLeadQ.eq('assigned_to', me)
+  const { data: dueLeads } = await fuLeadQ
+
+  const actQ = service.from('activities').select('id,type,title,created_at,lead_id,leads(first_name,last_name)').order('created_at', { ascending: false }).limit(8)
+  if (!admin) actQ.eq('user_id', me)
+  const { data: recent } = await actQ
+
+  const out = {
+    role: s.profile.role,
+    totals: { leads: total, signed, approved: byDisposition.Approved || 0, conversion: total ? Math.round((signed / total) * 1000) / 10 : 0 },
+    byDisposition,
+    today: {
+      newLeads: (leads || []).filter((l) => dayKey(l.created_at) === todayK).length,
+      emailsSent: (emails || []).filter((m) => dayKey(m.created_at) === todayK).length,
+    },
+    series, dueTasks: dueTasks || [], dueLeads: dueLeads || [], recent: recent || [],
+  }
+
+  if (admin) {
+    const { data: users } = await service.from('profiles').select('id,name,email,role,is_active').eq('is_active', true)
+    const { data: actToday } = await service.from('user_activity_days').select('user_id,seconds').eq('day', todayK)
+    const team = (users || []).map((u) => {
+      const mine = (leads || []).filter((l) => l.assigned_to === u.id)
+      const sg = mine.filter((l) => l.disposition === 'Signed' || l.disposition === 'Approved').length
+      return {
+        id: u.id, name: u.name, email: u.email, role: u.role,
+        leads: mine.length, signed: sg,
+        conversion: mine.length ? Math.round((sg / mine.length) * 1000) / 10 : 0,
+        activeSeconds: (actToday || []).find((a) => a.user_id === u.id)?.seconds || 0,
+        emailsSent: (emails || []).filter((m) => m.sent_by === u.id).length,
+      }
+    })
+    out.team = team
+  }
+  return json(out)
+})
+
+// ── notifications ─────────────────────────────────────────────
+route('GET', 'notifications', async ({ req }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  const { data } = await service.from('notifications').select('*').eq('user_id', s.user.id).order('created_at', { ascending: false }).limit(30)
+  return json({ notifications: data || [], unread: (data || []).filter((n) => !n.read).length })
+})
+route('POST', 'notifications/read', async ({ req, body }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  let q = service.from('notifications').update({ read: true }).eq('user_id', s.user.id)
+  if (body.ids?.length) q = q.in('id', body.ids)
+  else q = q.eq('read', false)
+  await q
+  return json({ ok: true })
+})
+
+// ── tasks ─────────────────────────────────────────────────────
+route('GET', 'tasks', async ({ req, query }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  let q = service.from('tasks').select('*, leads(id,first_name,last_name,phone,disposition)').order('created_at', { ascending: false }).limit(300)
+  const status = query.get('status')
+  if (status && status !== 'all') q = q.eq('status', status)
+  if (!isAdmin(s.profile) || query.get('scope') === 'me') q = q.eq('assigned_to', s.user.id)
+  const { data } = await q
+  return json({ tasks: data || [] })
+})
+route('POST', 'tasks', async ({ req, body }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  const assigned = isAdmin(s.profile) ? body.assigned_to || s.user.id : s.user.id
+  const { data, error } = await service.from('tasks').insert({
+    title: body.title, notes: body.notes || null, type: body.type || 'callback',
+    lead_id: body.lead_id || null, assigned_to: assigned, created_by: s.user.id,
+    due_at: body.due_at || null,
+  }).select('*, leads(id,first_name,last_name,phone,disposition)').single()
+  if (error) return fail(error.message)
+  if (data.lead_id) await import('../_lib.mjs').then((m) => m.logActivity(data.lead_id, s.user.id, 'task', `✔ Task created: ${data.title}`))
+  return json({ task: data })
+})
+route('PATCH', 'tasks/:id', async ({ req, params, body }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  const { data: existing } = await service.from('tasks').select('id,assigned_to,lead_id').eq('id', params.id).single()
+  if (!existing) return fail('Task not found', 404)
+  if (!isAdmin(s.profile) && existing.assigned_to !== s.user.id) return unauthorized()
+  const patch = {}
+  for (const k of ['title', 'notes', 'due_at', 'type']) if (k in body) patch[k] = body[k]
+  if ('status' in body) {
+    patch.status = body.status
+    patch.completed_at = body.status === 'done' ? new Date().toISOString() : null
+  }
+  const { data, error } = await service.from('tasks').update(patch).eq('id', params.id)
+    .select('*, leads(id,first_name,last_name,phone,disposition)').single()
+  if (error) return fail(error.message)
+  if (data.lead_id && 'status' in body) {
+    await import('../_lib.mjs').then((m) => m.logActivity(data.lead_id, s.user.id, 'task', body.status === 'done' ? `✔ Task completed: ${data.title}` : `↩ Task reopened: ${data.title}`))
+  }
+  return json({ task: data })
+})
+route('DELETE', 'tasks/:id', async ({ req, params }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  await service.from('tasks').delete().eq('id', params.id)
+  return json({ ok: true })
+})
+
+// ── templates ─────────────────────────────────────────────────
+route('GET', 'templates', async ({ req, query }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  let q = service.from('templates').select('*').order('created_at')
+  if (query.get('type')) q = q.eq('type', query.get('type'))
+  const { data } = await q
+  return json({ templates: data || [] })
+})
+route('POST', 'templates', async ({ req, body }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  const { data, error } = await service.from('templates').insert({
+    type: body.type, name: body.name, subject: body.subject || null,
+    body: body.body || '', updated_by: s.user.id,
+  }).select('*').single()
+  if (error) return fail(error.message)
+  return json({ template: data })
+})
+route('PATCH', 'templates/:id', async ({ req, params, body }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  const { data, error } = await service.from('templates').update({
+    name: body.name, subject: body.subject || null, body: body.body || '',
+    updated_by: s.user.id, updated_at: new Date().toISOString(),
+  }).eq('id', params.id).select('*').single()
+  if (error) return fail(error.message)
+  return json({ template: data })
+})
+route('DELETE', 'templates/:id', async ({ req, params }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  await service.from('templates').delete().eq('id', params.id)
+  return json({ ok: true })
+})
+
+// ── scripts ───────────────────────────────────────────────────
+route('GET', 'scripts', async ({ req, query }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  let q = service.from('scripts').select('*').order('created_at')
+  if (query.get('type')) q = q.eq('type', query.get('type'))
+  const { data } = await q
+  return json({ scripts: data || [] })
+})
+route('POST', 'scripts', async ({ req, body }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  const { data, error } = await service.from('scripts').insert({
+    title: body.title, type: body.type || 'general', content: body.content || '', updated_by: s.user.id,
+  }).select('*').single()
+  if (error) return fail(error.message)
+  return json({ script: data })
+})
+route('PATCH', 'scripts/:id', async ({ req, params, body }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  const { data, error } = await service.from('scripts').update({
+    title: body.title, type: body.type, content: body.content,
+    updated_by: s.user.id, updated_at: new Date().toISOString(),
+  }).eq('id', params.id).select('*').single()
+  if (error) return fail(error.message)
+  return json({ script: data })
+})
+route('DELETE', 'scripts/:id', async ({ req, params }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  await service.from('scripts').delete().eq('id', params.id)
+  return json({ ok: true })
+})
+
+// ── users (admin) ─────────────────────────────────────────────
+route('GET', 'users', async ({ req }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  const { data: users } = await service.from('profiles').select('*').order('created_at')
+  const { data: counts } = await service.from('leads').select('assigned_to')
+  const { data: act } = await service.from('user_activity_days').select('user_id,day,seconds')
+  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)
+  const out = (users || []).map((u) => ({
+    ...u,
+    leadCount: (counts || []).filter((c) => c.assigned_to === u.id).length,
+    activeToday: (act || []).find((a) => a.user_id === u.id && a.day === today())?.seconds || 0,
+    activeWeek: (act || []).filter((a) => a.user_id === u.id && a.day >= weekAgo).reduce((x, a) => x + a.seconds, 0),
+  }))
+  return json({ users: out })
+})
+route('GET', 'users/agents', async ({ req }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  const { data } = await service.from('profiles').select('id,name,role').eq('is_active', true).order('name')
+  return json({ users: data || [] })
+})
+route('POST', 'users', async ({ req, body }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  if (!body.email || !body.password || body.password.length < 6) return fail('Email and a 6+ character password are required')
+  const { data, error } = await service.auth.admin.createUser({
+    email: body.email, password: body.password, email_confirm: true,
+    user_metadata: { name: body.name || body.email.split('@')[0], role: body.role === 'admin' ? 'admin' : 'agent' },
+  })
+  if (error) return fail(error.message)
+  return json({ user: { id: data.user.id, email: data.user.email } })
+})
+route('PATCH', 'users/:id', async ({ req, params, body }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  const patch = {}
+  if ('name' in body) patch.name = body.name
+  if ('role' in body) patch.role = body.role
+  if ('is_active' in body) patch.is_active = !!body.is_active
+  if (Object.keys(patch).length) await service.from('profiles').update(patch).eq('id', params.id)
+  if (body.password) {
+    const { error } = await service.auth.admin.updateUserById(params.id, { password: body.password })
+    if (error) return fail(error.message)
+  }
+  return json({ ok: true })
+})
