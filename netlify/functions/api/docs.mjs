@@ -1,7 +1,7 @@
 import { route } from './_router.mjs'
 import {
   service, json, fail, getSession, unauthorized, logActivity, notify, adminIds, baseUrl,
-} from '../_lib.mjs'
+} from './_lib.mjs'
 
 const isAdmin = (p) => p?.role === 'admin'
 const clean = (n) => String(n || 'file').replace(/[^\w.\- ]+/g, '_').slice(0, 120)

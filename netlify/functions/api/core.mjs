@@ -1,9 +1,30 @@
 import { route } from './_router.mjs'
 import {
-  service, json, fail, getSession, unauthorized, notify, today,
-} from '../_lib.mjs'
+  service, json, fail, getSession, unauthorized, notify, today, dbConfigured,
+} from './_lib.mjs'
 
 const isAdmin = (p) => p?.role === 'admin'
+
+// ── first-run setup (allowed only until the first admin exists) ──
+route('GET', 'setup/status', async () => {
+  if (!dbConfigured()) return json({ needed: true, dbConfigured: false })
+  const { count } = await service.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'admin')
+  return json({ needed: (count || 0) === 0, dbConfigured: true })
+})
+
+route('POST', 'setup', async ({ body }) => {
+  const { count } = await service.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'admin')
+  if ((count || 0) > 0) return fail('Setup already completed — an admin exists', 403)
+  if (!body.email || !body.password || body.password.length < 6) return fail('Email and a 6+ character password are required')
+  const { data, error } = await service.auth.admin.createUser({
+    email: body.email,
+    password: body.password,
+    email_confirm: true,
+    user_metadata: { name: body.name || body.email.split('@')[0], role: 'admin' },
+  })
+  if (error) return fail(error.message)
+  return json({ ok: true, id: data.user.id })
+})
 
 // ── me ────────────────────────────────────────────────────────
 route('GET', 'me', async ({ req }) => {
@@ -138,7 +159,7 @@ route('POST', 'tasks', async ({ req, body }) => {
     due_at: body.due_at || null,
   }).select('*, leads(id,first_name,last_name,phone,disposition)').single()
   if (error) return fail(error.message)
-  if (data.lead_id) await import('../_lib.mjs').then((m) => m.logActivity(data.lead_id, s.user.id, 'task', `✔ Task created: ${data.title}`))
+  if (data.lead_id) await import('./_lib.mjs').then((m) => m.logActivity(data.lead_id, s.user.id, 'task', `✔ Task created: ${data.title}`))
   return json({ task: data })
 })
 route('PATCH', 'tasks/:id', async ({ req, params, body }) => {
@@ -157,7 +178,7 @@ route('PATCH', 'tasks/:id', async ({ req, params, body }) => {
     .select('*, leads(id,first_name,last_name,phone,disposition)').single()
   if (error) return fail(error.message)
   if (data.lead_id && 'status' in body) {
-    await import('../_lib.mjs').then((m) => m.logActivity(data.lead_id, s.user.id, 'task', body.status === 'done' ? `✔ Task completed: ${data.title}` : `↩ Task reopened: ${data.title}`))
+    await import('./_lib.mjs').then((m) => m.logActivity(data.lead_id, s.user.id, 'task', body.status === 'done' ? `✔ Task completed: ${data.title}` : `↩ Task reopened: ${data.title}`))
   }
   return json({ task: data })
 })

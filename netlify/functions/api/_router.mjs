@@ -38,6 +38,6 @@ export async function handle(req, context) {
     const params = match(r.parts, segs)
     if (params) return r.handler({ req, url, params, context, body, raw, query: url.searchParams })
   }
-  const { fail } = await import('../_lib.mjs')
+  const { fail } = await import('./_lib.mjs')
   return fail('Not found', 404)
 }

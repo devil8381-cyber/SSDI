@@ -1,5 +1,5 @@
 import { handle } from './_router.mjs'
-import { json } from '../_lib.mjs'
+import { json } from './_lib.mjs'
 import './core.mjs'
 import './leads.mjs'
 import './emails.mjs'

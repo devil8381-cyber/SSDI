@@ -2,7 +2,7 @@ import { route } from './_router.mjs'
 import {
   service, json, fail, getSession, unauthorized, logActivity, notify, adminIds,
   getSetting, setSetting, encrypt, decrypt, driveFor, ensureFolder,
-} from '../_lib.mjs'
+} from './_lib.mjs'
 
 const isAdmin = (p) => p?.role === 'admin'
 const clean = (n) => String(n || 'recording').replace(/[^\w.\- ]+/g, '_').slice(0, 120)
@@ -58,13 +58,13 @@ async function transferToDrive(row) {
 
     const ext = (row.file_name.split('.').pop() || 'mp4').toLowerCase()
     const date = new Date().toISOString().slice(0, 16).replace('T', ' ')
-    const { data: file, error: fileErr } = await drive.files.create({
-      requestBody: { name: `${typeLabel(row.type)} – ${leadName} – ${date}.${ext}`, parents: [leadFolder] },
-      media: { mimeType: blob.type || 'application/octet-stream', body: buf },
-      fields: 'id,webViewLink',
-    })
-    if (fileErr) throw new Error(fileErr.message || 'Drive upload failed')
-    await drive.permissions.create({ fileId: file.id, requestBody: { role: 'reader', type: 'anyone' } })
+    const file = await drive.uploadFile(
+      `${typeLabel(row.type)} – ${leadName} – ${date}.${ext}`,
+      leadFolder,
+      blob.type || 'application/octet-stream',
+      buf
+    )
+    await drive.setPermissionAnyoneReader(file.id)
 
     await service.from('recordings').update({
       drive_file_id: file.id, drive_link: file.webViewLink, status: 'ready',
@@ -98,7 +98,7 @@ route('PUT', 'drive/settings', async ({ req, body }) => {
     let creds
     try { creds = JSON.parse(body.service_account_json) } catch { return fail('That is not valid service-account JSON') }
     if (!creds.client_email || !creds.private_key) return fail('JSON is missing client_email or private_key')
-    const { encrypt } = await import('../_lib.mjs')
+    const { encrypt } = await import('./_lib.mjs')
     next.service_account_enc = encrypt(body.service_account_json)
   }
   await setSetting('drive', next)
@@ -112,8 +112,8 @@ route('DELETE', 'recordings/:id', async ({ req, params }) => {
   const { data: row } = await service.from('recordings').select('*').eq('id', params.id).single()
   if (row?.storage_path) await service.storage.from('recordings').remove([row.storage_path]).catch(() => {})
   if (row?.drive_file_id && row.drive_file_id.length > 10) {
-    const drive = driveFor(await getSetting('drive'))
-    await drive?.files.delete({ fileId: row.drive_file_id }).catch(() => {})
+    const drive = driveFor(await getSetting('drive')).catch(() => null)
+    await drive?.deleteFile(row.drive_file_id).catch(() => {})
   }
   await service.from('recordings').delete().eq('id', params.id)
   return json({ ok: true })

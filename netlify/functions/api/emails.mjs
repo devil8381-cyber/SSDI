@@ -2,7 +2,7 @@ import { route } from './_router.mjs'
 import {
   service, json, fail, getSession, unauthorized, logActivity,
   sendLeadEmail, baseUrl, encrypt, decrypt,
-} from '../_lib.mjs'
+} from './_lib.mjs'
 import nodemailer from 'nodemailer'
 
 const isAdmin = (p) => p?.role === 'admin'

@@ -2,7 +2,7 @@ import { route } from './_router.mjs'
 import {
   service, json, fail, getSession, unauthorized, logActivity, notify, adminIds,
   sendCapi, metaSecrets, getSetting,
-} from '../_lib.mjs'
+} from './_lib.mjs'
 
 const isAdmin = (p) => p?.role === 'admin'
 

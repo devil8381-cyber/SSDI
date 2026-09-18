@@ -1,13 +1,16 @@
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'node:crypto'
 import nodemailer from 'nodemailer'
-import { google } from 'googleapis'
 
 export const service = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  process.env.SUPABASE_URL || 'https://placeholder.supabase.co',
+  process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-service-role-key',
   { auth: { persistSession: false } }
 )
+
+export function dbConfigured() {
+  return !!process.env.SUPABASE_URL && !!process.env.SUPABASE_SERVICE_ROLE_KEY
+}
 
 export const json = (data, status = 200, headers = {}) =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json', ...headers } })
@@ -167,30 +170,95 @@ export function metaSecrets(meta) {
   return out
 }
 
-// ── Google Drive (service account) ───────────────────────────
-export function driveFor(driveSettings) {
-  const sa = driveSettings?.service_account_enc ? decrypt(driveSettings.service_account_enc) : null
+// ── Google Drive via REST (service account; no SDK — Windows-safe) ──
+const driveTokenCache = {}
+
+async function driveAccessToken(clientEmail, privateKey) {
+  const cached = driveTokenCache[clientEmail]
+  const now = Math.floor(Date.now() / 1000)
+  if (cached && cached.exp > now + 60) return cached.token
+  const b64 = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url')
+  const unsigned = `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64({
+    iss: clientEmail,
+    scope: 'https://www.googleapis.com/auth/drive',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: now + 3600,
+  })}`
+  const signature = crypto.createSign('RSA-SHA256').update(unsigned).sign(privateKey, 'base64url')
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: `${unsigned}.${signature}` }),
+  })
+  const data = await res.json()
+  if (!data.access_token) throw new Error(`Drive auth failed: ${data.error_description || data.error || res.status}`)
+  driveTokenCache[clientEmail] = { token: data.access_token, exp: now + (data.expires_in || 3600) }
+  return data.access_token
+}
+
+export async function driveFor(driveSettings) {
+  if (!driveSettings?.service_account_enc) return null
+  const sa = decrypt(driveSettings.service_account_enc)
   if (!sa) return null
   const creds = JSON.parse(sa)
-  const auth = new google.auth.JWT({
-    email: creds.client_email,
-    key: creds.private_key,
-    scopes: ['https://www.googleapis.com/auth/drive'],
-  })
-  return google.drive({ version: 'v3', auth })
+  const token = await driveAccessToken(creds.client_email, creds.private_key)
+  const base = 'https://www.googleapis.com/drive/v3'
+  const call = async (path, opts = {}) => {
+    const res = await fetch(`${base}${path}`, {
+      ...opts,
+      headers: { authorization: `Bearer ${token}`, ...(opts.headers || {}) },
+    })
+    if (!res.ok) throw new Error(`Drive API ${res.status}: ${(await res.text()).slice(0, 300)}`)
+    return (res.headers.get('content-type') || '').includes('json') ? res.json() : null
+  }
+  return {
+    async findFolder(name, parentId) {
+      const q = `name='${String(name).replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false${
+        parentId ? ` and '${parentId}' in parents` : ''
+      }`
+      const data = await call(`/files?q=${encodeURIComponent(q)}&fields=files(id)&pageSize=1`)
+      return data.files?.[0]?.id || null
+    },
+    async createFolder(name, parentId) {
+      const data = await call('/files?fields=id', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', ...(parentId ? { parents: [parentId] } : {}) }),
+      })
+      return data.id
+    },
+    async uploadFile(name, parentId, mimeType, buffer) {
+      const boundary = 'leaddesk' + Date.now()
+      const meta = JSON.stringify({ name, ...(parentId ? { parents: [parentId] } : {}) })
+      const body = Buffer.concat([
+        Buffer.from(`--${boundary}\r\ncontent-type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\ncontent-type: ${mimeType}\r\n\r\n`),
+        buffer,
+        Buffer.from(`\r\n--${boundary}--`),
+      ])
+      return call('/files?uploadType=multipart&fields=id,webViewLink', {
+        method: 'POST',
+        headers: { 'content-type': `multipart/related; boundary=${boundary}` },
+        body,
+      })
+    },
+    async setPermissionAnyoneReader(fileId) {
+      return call(`/files/${fileId}/permissions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+      })
+    },
+    async deleteFile(fileId) {
+      return call(`/files/${fileId}`, { method: 'DELETE' })
+    },
+  }
 }
 
 export async function ensureFolder(drive, name, parentId) {
-  const q = `name='${String(name).replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false${
-    parentId ? ` and '${parentId}' in parents` : ''
-  }`
-  const { data: found } = await drive.files.list({ q, fields: 'files(id)', pageSize: 1 })
-  if (found.files?.length) return found.files[0].id
-  const { data: created } = await drive.files.create({
-    requestBody: { name, mimeType: 'application/vnd.google-apps.folder', ...(parentId ? { parents: [parentId] } : {}) },
-    fields: 'id',
-  })
-  return created.id
+  const found = await drive.findFolder(name, parentId)
+  if (found) return found
+  return drive.createFolder(name, parentId)
 }
 
 // ── misc ─────────────────────────────────────────────────────

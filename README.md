@@ -15,7 +15,7 @@ A sales & lead-management CRM for SSDI teams — hosted on **Netlify**, deployed
 
 ## Tech stack
 
-React + Vite + Tailwind (frontend) · Netlify Functions (API) · Supabase (Postgres, auth, storage) · nodemailer (SMTP) · googleapis (Drive) · Meta Graph API (webhook + CAPI)
+React + Vite + Tailwind (frontend) · Netlify Functions (API) · Supabase (Postgres, auth, storage) · nodemailer (SMTP) · Google Drive REST v3 (service-account JWT, no SDK) · Meta Graph API (webhook + CAPI)
 
 ---
 
@@ -40,11 +40,7 @@ node -e "console.log(require('crypto').randomBytes(16).toString('hex'))"   # →
 
 ### 3. First admin account
 
-User creation inside the CRM requires an admin, so bootstrap the first one manually:
-
-1. Supabase Dashboard → **Authentication → Users → Add user** → enter email + password → Create.
-2. **Table Editor → profiles** → find that user → set `role` = `admin`.
-3. Log into the CRM with that email/password. All further users are created from **Admin → Users** (their passwords are included — share them securely).
+Nothing to do manually — open the site and it shows a **one-time "Create admin account"** screen (it only appears while no admin exists). Create your admin, and all further users are then managed from **Admin → Users**.
 
 ### 4. Push to GitHub + Netlify — ~5 min
 
