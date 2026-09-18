@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CheckCircle2, Circle, Plus, ClipboardList } from 'lucide-react'
-import { api } from '../api'
+import { CheckCircle2, Circle, Plus, ClipboardList, Loader2 } from 'lucide-react'
+import { api, describeError } from '../api'
 import { useAuth } from '../auth'
-import { useToast, Modal, Empty, Spinner, fmtDateTime, leadName } from '../ui'
+import { useAction } from '../lib/hooks'
+import { maxLen, sanitizeText } from '../lib/validate'
+import { useToast, Modal, Empty, Spinner, PageError, fmtDateTime, leadName } from '../ui'
 import { TASK_TYPES } from '../config'
 
 export default function Tasks() {
@@ -11,20 +13,26 @@ export default function Tasks() {
   const toast = useToast()
   const admin = profile?.role === 'admin'
   const [tasks, setTasks] = useState(null)
+  const [loadError, setLoadError] = useState(null)
   const [status, setStatus] = useState('open')
   const [scope, setScope] = useState('me')
   const [showAdd, setShowAdd] = useState(false)
+  const [busyId, setBusyId] = useState(null) // per-row busy: toggling one row can't be double-clicked
 
-  const load = () => {
+  const load = useCallback(() => {
     const p = new URLSearchParams({ status })
     if (scope === 'me') p.set('scope', 'me')
-    api(`/tasks?${p}`).then((d) => setTasks(d.tasks || [])).catch((e) => toast(e.message, 'error'))
-  }
-  useEffect(load, [status, scope])
+    api(`/tasks?${p}`)
+      .then((d) => { setTasks(d.tasks || []); setLoadError(null) })
+      .catch((e) => setLoadError(describeError(e)))
+  }, [status, scope])
 
-  const toggle = async (t) => {
-    try { await api(`/tasks/${t.id}`, { method: 'PATCH', body: { status: t.status === 'open' ? 'done' : 'open' } }); load() } catch (e) { toast(e.message, 'error') }
-  }
+  useEffect(() => { load() }, [load])
+
+  const { run: toggle, busy: toggling } = useAction(async (t) => {
+    setBusyId(t.id)
+    await api(`/tasks/${t.id}`, { method: 'PATCH', body: { status: t.status === 'open' ? 'done' : 'open' } })
+  }, { toast, onDone: () => { setBusyId(null); load() } })
 
   const todayStr = new Date().toISOString().slice(0, 10)
   const isOverdue = (t) => t.status === 'open' && t.due_at && t.due_at.slice(0, 10) < todayStr
@@ -46,14 +54,15 @@ export default function Tasks() {
         )}
       </div>
       <div className="card overflow-hidden">
-        {!tasks ? <div className="flex justify-center py-16"><Spinner className="h-7 w-7" /></div>
+        {!tasks && !loadError ? <div className="flex justify-center py-16"><Spinner className="h-7 w-7" /></div>
+          : loadError ? <PageError message={loadError} onRetry={load} />
           : tasks.length === 0 ? <Empty icon={ClipboardList} title="No tasks here" hint="Create callbacks and follow-ups so nothing slips" />
           : (
           <div className="divide-y divide-slate-100">
             {tasks.map((t) => (
               <div key={t.id} className="flex items-center gap-3 px-5 py-3">
-                <button onClick={() => toggle(t)} className="text-slate-300 hover:text-emerald-500">
-                  {t.status === 'open' ? <Circle size={18} /> : <CheckCircle2 size={18} className="text-emerald-500" />}
+                <button onClick={() => toggle(t)} disabled={toggling && busyId === t.id} className="text-slate-300 hover:text-emerald-500 disabled:opacity-40">
+                  {busyId === t.id && toggling ? <Loader2 size={18} className="animate-spin" /> : t.status === 'open' ? <Circle size={18} /> : <CheckCircle2 size={18} className="text-emerald-500" />}
                 </button>
                 <div className="min-w-0 flex-1">
                   <p className={`text-sm font-medium ${t.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{t.title}</p>
@@ -63,7 +72,7 @@ export default function Tasks() {
                     <span className={isOverdue(t) ? 'font-semibold text-rose-500' : ''}>{t.due_at ? `due ${fmtDateTime(t.due_at)}` : 'no due date'}</span>
                   </p>
                 </div>
-                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-500">{t.type.replace('_', ' ')}</span>
+                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-500">{(t.type || 'other').replace('_', ' ')}</span>
               </div>
             ))}
           </div>
@@ -79,20 +88,41 @@ function AddTask({ open, onClose, onDone }) {
   const { profile } = useAuth()
   const [agents, setAgents] = useState([])
   const [f, setF] = useState({ title: '', type: 'callback', due_at: '', assigned_to: profile?.id || '' })
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
   useEffect(() => { api('/users/agents').then((d) => setAgents(d.users || [])).catch(() => {}) }, [])
+
   const save = async () => {
+    if (busy) return
+    const title = sanitizeText(f.title, 200)
+    if (!title) { setErr('Give the task a title so your teammate knows what to do.'); return }
+    setBusy(true)
+    setErr('')
     try {
       await api('/tasks', {
         method: 'POST',
-        body: { ...f, due_at: f.due_at ? new Date(f.due_at).toISOString() : null, assigned_to: profile.role === 'admin' ? f.assigned_to : profile.id },
+        body: {
+          title,
+          notes: sanitizeText(f.notes, 2000),
+          type: f.type,
+          due_at: f.due_at ? new Date(f.due_at).toISOString() : null, // local → UTC
+          assigned_to: profile.role === 'admin' ? f.assigned_to : profile.id,
+        },
       })
       toast('Task created')
+      setF({ title: '', type: 'callback', due_at: '', assigned_to: profile?.id || '' })
       onDone()
-    } catch (e) { toast(e.message, 'error') }
+    } catch (e) {
+      setErr(describeError(e))
+    } finally {
+      setBusy(false)
+    }
   }
+
   return (
     <Modal open={open} onClose={onClose} title="New task">
       <div className="space-y-3">
+        {err && <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{err}</p>}
         <div><label className="label">Title *</label><input className="input" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} autoFocus /></div>
         <div className="grid grid-cols-2 gap-3">
           <div><label className="label">Type</label>
@@ -111,7 +141,7 @@ function AddTask({ open, onClose, onDone }) {
         )}
         <div className="flex justify-end gap-2">
           <button className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" onClick={save} disabled={!f.title.trim()}>Create</button>
+          <button className="btn-primary" onClick={save} disabled={busy || !f.title.trim()}>{busy ? 'Creating…' : 'Create'}</button>
         </div>
       </div>
     </Modal>

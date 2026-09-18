@@ -37,8 +37,14 @@ export function DispositionBadge({ value }) {
 export function Modal({ open, onClose, title, children, wide }) {
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose?.()
-    if (open) document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    if (open) {
+      document.addEventListener('keydown', onKey)
+      document.body.style.overflow = 'hidden' // stop background scroll bleed-through
+    }
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = ''
+    }
   }, [open, onClose])
   if (!open) return null
   return (
@@ -63,6 +69,29 @@ export function Spinner({ className = 'h-5 w-5' }) {
       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
     </svg>
+  )
+}
+
+// Shared "failed to load this page" panel — every list/detail page uses it
+// so a failed fetch is always recoverable with one click, never an eternal spinner.
+export function PageError({ message, onRetry }) {
+  return (
+    <div className="card flex flex-col items-center justify-center py-12 text-center">
+      <div className="mb-3 rounded-full bg-rose-100 p-3 text-rose-500"><AlertTriangle size={22} /></div>
+      <p className="max-w-sm text-sm text-slate-600">{message || 'This page couldn’t be loaded.'}</p>
+      {onRetry && <button className="btn-primary mt-4" onClick={onRetry}>Try again</button>}
+    </div>
+  )
+}
+
+// Small busy-button: keeps every actionable element visually honest while
+// its request is in flight.
+export function BusyButton({ busy, children, className = 'btn-primary', ...rest }) {
+  return (
+    <button className={className} disabled={busy || rest.disabled} {...rest}>
+      {busy ? <Spinner className="h-4 w-4" /> : null}
+      {children}
+    </button>
   )
 }
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Headphones, AlertCircle, ShieldCheck } from 'lucide-react'
 import { useAuth } from '../auth'
-import { api } from '../api'
+import { api, describeError } from '../api'
 
 export default function Login() {
   const { signIn } = useAuth()
@@ -11,28 +11,34 @@ export default function Login() {
   const [err, setErr] = useState('')
   const [okMsg, setOkMsg] = useState('')
   const [busy, setBusy] = useState(false)
+  const [busyRef] = useState({ current: false }) // re-entrancy gate surviving re-renders
   const [firstRun, setFirstRun] = useState(false)
   const [checked, setChecked] = useState(false)
 
   useEffect(() => {
+    // If the DB isn't reachable/configured yet, this just stays on plain login.
     api('/setup/status').then((d) => setFirstRun(!!d.needed)).catch(() => {})
       .finally(() => setChecked(true))
   }, [])
 
   const submit = async (e) => {
     e.preventDefault()
+    if (busyRef.current) return // Enter-key spam defense
+    busyRef.current = true
     setErr('')
+    setOkMsg('')
     setBusy(true)
     try {
       if (firstRun) {
         await api('/setup', { method: 'POST', body: { name, email, password } })
-        setFirstRun(false)
-        setOkMsg('Admin account created — sign in below.')
+        // Straight into the app — no forced re-typing of the same credentials
+        await signIn(email, password)
       } else {
         await signIn(email, password)
       }
     } catch (ex) {
-      setErr(ex.message)
+      setErr(describeError(ex))
+      busyRef.current = false
     } finally {
       setBusy(false)
     }
@@ -73,7 +79,7 @@ export default function Login() {
           </div>
           <div>
             <label className="label">Password</label>
-            <input className="input" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder={firstRun ? 'min 6 characters' : '••••••••'} />
+            <input className="input" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder={firstRun ? 'min 6 characters' : '••••••••'} minLength={firstRun ? 6 : undefined} />
           </div>
           <button className="btn-primary w-full" disabled={busy}>
             {busy ? 'Please wait…' : firstRun ? 'Create admin account' : 'Sign in'}

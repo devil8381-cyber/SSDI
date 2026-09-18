@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users2, ClipboardList, FileText, MessageSquareText, ScrollText,
-  UserCog, Plug, Send, Bell, LogOut, Menu, X, Headphones,
+  UserCog, Plug, Send, Bell, LogOut, Menu, X, Headphones, WifiOff,
 } from 'lucide-react'
 import { api } from '../api'
 import { useAuth } from '../auth'
+import { useOnline } from '../lib/hooks'
 import { fmtDateTime } from '../ui'
 
 const NAV = [
@@ -25,28 +26,38 @@ const ADMIN_NAV = [
 export default function Layout({ children }) {
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
+  const online = useOnline()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [notifs, setNotifs] = useState([])
   const [notifOpen, setNotifOpen] = useState(false)
   const bellRef = useRef(null)
 
-  // active-time heartbeat: pings only while the tab is visible
+  // Active-time heartbeat: only counts while the tab is visible AND we're
+  // online, so offline time never inflates "active" metrics.
   useEffect(() => {
     let visible = !document.hidden
     const onVis = () => { visible = !document.hidden }
     document.addEventListener('visibilitychange', onVis)
     const iv = setInterval(() => {
-      if (visible) api('/heartbeat', { method: 'POST', body: { seconds: 60 } }).catch(() => {})
+      if (visible && online) api('/heartbeat', { method: 'POST', body: { seconds: 60 } }).catch(() => {})
     }, 60000)
     return () => { document.removeEventListener('visibilitychange', onVis); clearInterval(iv) }
-  }, [])
+  }, [online])
 
-  const loadNotifs = () => api('/notifications').then((d) => setNotifs(d.notifications || [])).catch(() => {})
+  // Notifications poll pauses while the tab is hidden or offline — no wasted
+  // requests, and it self-heals the moment connectivity returns.
   useEffect(() => {
-    loadNotifs()
-    const iv = setInterval(loadNotifs, 45000)
-    return () => clearInterval(iv)
-  }, [])
+    const load = () => {
+      if (document.hidden || !online) return
+      api('/notifications').then((d) => setNotifs(d.notifications || [])).catch(() => {})
+    }
+    load()
+    const iv = setInterval(load, 45000)
+    const onVis = () => { if (!document.hidden) load() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { clearInterval(iv); document.removeEventListener('visibilitychange', onVis) }
+  }, [online])
+
   useEffect(() => {
     const close = (e) => { if (bellRef.current && !bellRef.current.contains(e.target)) setNotifOpen(false) }
     document.addEventListener('mousedown', close)
@@ -55,7 +66,7 @@ export default function Layout({ children }) {
   const unread = notifs.filter((n) => !n.read).length
 
   const markRead = async () => {
-    const ids = notifs.filter((n) => !n.read).map((n) => n.id)
+    const ids = notifs.filter((n) => !n.read).map((n) => n.id).slice(0, 100) // cap payload size
     if (ids.length) await api('/notifications/read', { method: 'POST', body: { ids } }).catch(() => {})
     setNotifs((ns) => ns.map((n) => ({ ...n, read: true })))
   }
@@ -77,6 +88,13 @@ export default function Layout({ children }) {
 
   return (
     <div className="flex min-h-screen">
+      {/* offline banner — never block the UI, just inform */}
+      {!online && (
+        <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-center gap-2 bg-amber-500 px-4 py-1.5 text-sm font-medium text-white">
+          <WifiOff size={15} /> You're offline — changes can't be saved right now. Reconnecting automatically…
+        </div>
+      )}
+
       {/* sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-40 flex w-60 flex-col bg-slate-900 transition-transform lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex items-center gap-2.5 px-5 py-5">
@@ -116,7 +134,7 @@ export default function Layout({ children }) {
 
       {/* main */}
       <div className="flex min-h-screen w-full flex-col lg:pl-60">
-        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur lg:px-8">
+        <header className={`sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur lg:px-8 ${!online ? 'mt-8' : ''}`}>
           <button className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden" onClick={() => setSidebarOpen(true)}><Menu size={20} /></button>
           <div className="flex-1" />
           <div className="relative" ref={bellRef}>

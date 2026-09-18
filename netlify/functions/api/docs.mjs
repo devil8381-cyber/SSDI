@@ -72,12 +72,15 @@ route('GET', 'doc/:token', async ({ params }) => {
   })
 })
 
+const MAX_DOC_BYTES = 25 * 1024 * 1024 // 25 MB — matches Netlify-safe storage flows
+
 route('POST', 'doc/:token/upload-url', async ({ params, body }) => {
   const { row, error, status } = await validRequest(params.token)
   if (error) return fail(error, status)
+  if (body.size && Number(body.size) > MAX_DOC_BYTES) return fail('That file is too large — the maximum is 25 MB.')
   const path = `claims/${row.token}/${Date.now()}_${clean(body.file_name)}`
   const { data, error: upErr } = await service.storage.from('documents').createSignedUploadUrl(path)
-  if (upErr || !data?.signedUrl) return fail('Could not start upload', 500)
+  if (upErr || !data?.signedUrl) return fail('Could not start the upload — try again in a moment.', 500)
   return json({ signed_url: data.signedUrl, path: data.path, token: data.token })
 })
 
@@ -85,10 +88,15 @@ route('POST', 'doc/:token/confirm', async ({ params, body }) => {
   const { row, error, status } = await validRequest(params.token)
   if (error) return fail(error, status)
   if (!body.path) return fail('Missing upload path')
+  // Security: the stored path must live inside THIS token's folder. Without
+  // this check a crafted confirm call could register another claimant's
+  // storage path and read it through this lead's download links.
+  if (!String(body.path).startsWith(`claims/${row.token}/`)) return fail('Upload path does not match this secure link', 403)
+  if (body.size && Number(body.size) > MAX_DOC_BYTES) return fail('That file is too large — the maximum is 25 MB.')
   const { data: doc, error: insErr } = await service.from('documents').insert({
     lead_id: row.lead_id, request_id: row.id,
-    doc_type: body.doc_type || 'Document', file_name: clean(body.file_name),
-    storage_path: body.path, size_bytes: body.size || null,
+    doc_type: clean(body.doc_type, 120) || 'Document', file_name: clean(body.file_name),
+    storage_path: body.path, size_bytes: Number(body.size) || null,
   }).select('*').single()
   if (insErr) return fail(insErr.message)
   await service.from('doc_requests').update({ status: 'uploaded', uploaded_at: new Date().toISOString() }).eq('id', row.id)

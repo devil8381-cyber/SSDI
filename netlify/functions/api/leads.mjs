@@ -1,7 +1,7 @@
 import { route } from './_router.mjs'
 import {
   service, json, fail, getSession, unauthorized, logActivity, notify, adminIds,
-  sendCapi, metaSecrets, getSetting,
+  sendCapi, metaSecrets, getSetting, DISPOSITIONS, LEAD_SOURCES,
 } from './_lib.mjs'
 
 const isAdmin = (p) => p?.role === 'admin'
@@ -10,6 +10,24 @@ const LEAD_FIELDS = [
   'first_name', 'last_name', 'email', 'phone', 'dob', 'state', 'city',
   'worked_5_of_10', 'receiving_benefits', 'duration_12m', 'has_attorney', 'disability', 'notes',
 ]
+const TEXT_FIELDS = ['first_name', 'last_name', 'email', 'phone', 'state', 'city', 'disability', 'notes']
+
+// Server-side normalization: trim, strip control chars, cap length.
+// Mirrors the client's sanitizeText so malformed payloads from any source
+// (API misuse, CSV junk, Meta form fields) can't pollute the database.
+const cleanStr = (v, max = 200) => {
+  if (v === undefined || v === null) return null
+  const s = String(v).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim()
+  return s ? s.slice(0, max) : null
+}
+const cleanLeadPatch = (patch) => {
+  for (const f of TEXT_FIELDS) {
+    if (f in patch) patch[f] = cleanStr(patch[f], f === 'notes' || f === 'disability' ? 2000 : 200)
+  }
+  if ('email' in patch && patch.email) patch.email = patch.email.toLowerCase()
+  return patch
+}
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const canSee = (profile, lead) => isAdmin(profile) || lead.assigned_to === profile.id
 
@@ -61,8 +79,13 @@ route('GET', 'leads', async ({ req, query }) => {
   if (createdAfter) q = q.gte('created_at', createdAfter)
   const qstr = query.get('q')
   if (qstr) {
-    const like = `%${qstr.replace(/[%,()]/g, '')}%`
-    q = q.or(`first_name.ilike.${like},last_name.ilike.${like},email.ilike.${like},phone.ilike.${like},city.ilike.${like}`)
+    // PostgREST .or() treats ,() as syntax — strip them so a pasted value
+    // can't break the filter or inject unexpected OR branches.
+    const clean = qstr.replace(/[%(),*]/g, ' ').trim()
+    if (clean) {
+      const like = `%${clean}%`
+      q = q.or(`first_name.ilike.${like},last_name.ilike.${like},email.ilike.${like},phone.ilike.${like},city.ilike.${like}`)
+    }
   }
   const { data: rows, count, error } = await q
     .order('created_at', { ascending: false })
@@ -75,8 +98,9 @@ route('GET', 'leads', async ({ req, query }) => {
 route('POST', 'leads', async ({ req, body }) => {
   const s = await getSession(req)
   if (!s) return unauthorized()
-  const patch = { source: body.source || 'manual' }
+  const patch = { source: LEAD_SOURCES.includes(body.source) ? body.source : 'manual' }
   for (const f of LEAD_FIELDS) if (f in body) patch[f] = body[f] === '' ? null : body[f]
+  cleanLeadPatch(patch)
   if (isAdmin(s.profile)) patch.assigned_to = body.assigned_to || null
   else patch.assigned_to = s.user.id
   const { data, error } = await service.from('leads').insert(patch).select('*').single()
@@ -124,19 +148,23 @@ route('PATCH', 'leads/:id', async ({ req, params, body, context }) => {
 
   const patch = { updated_at: new Date().toISOString() }
   for (const f of LEAD_FIELDS) if (f in body) patch[f] = body[f] === '' ? null : body[f]
+  cleanLeadPatch(patch)
   if ('next_followup_at' in body) patch.next_followup_at = body.next_followup_at || null
 
   let activityType = 'edited'
   let activityTitle = 'Lead details updated'
 
   if ('disposition' in body && body.disposition && body.disposition !== lead.disposition) {
+    // Whitelist: an arbitrary disposition string would break dashboards,
+    // filters, and the Meta quality mapping downstream.
+    if (!DISPOSITIONS.includes(body.disposition)) return fail('Invalid disposition')
     patch.disposition = body.disposition
-    patch.disposition_reason = body.disposition === 'Criteria Not Met' ? (body.disposition_reason || null) : null
+    patch.disposition_reason = body.disposition === 'Criteria Not Met' ? (cleanStr(body.disposition_reason, 100) || null) : null
     activityType = 'disposition'
     activityTitle = `Disposition: ${lead.disposition} → ${body.disposition}`
     if (patch.disposition_reason) activityTitle += ` (${patch.disposition_reason})`
   } else if ('disposition_reason' in body && body.disposition === 'Criteria Not Met') {
-    patch.disposition_reason = body.disposition_reason || null
+    patch.disposition_reason = cleanStr(body.disposition_reason, 100) || null
   }
 
   if ('assigned_to' in body && isAdmin(s.profile) && body.assigned_to !== lead.assigned_to) {
@@ -176,8 +204,11 @@ route('POST', 'leads/assign', async ({ req, body }) => {
   const s = await getSession(req)
   if (!s) return unauthorized()
   if (!isAdmin(s.profile)) return fail('Admin only', 403)
-  const ids = body.ids || []
-  if (!ids.length) return fail('No leads selected')
+  // Validate + cap: malformed ids would 500 on the Postgres .in() call
+  const ids = (Array.isArray(body.ids) ? body.ids : [])
+    .filter((x) => UUID_RE.test(String(x)))
+    .slice(0, 5000)
+  if (!ids.length) return fail('No valid leads selected')
   let agentName = 'Unassigned'
   if (body.agent_id) {
     const { data: agent } = await service.from('profiles').select('name').eq('id', body.agent_id).single()
@@ -195,34 +226,36 @@ route('POST', 'leads/import', async ({ req, body }) => {
   const s = await getSession(req)
   if (!s) return unauthorized()
   if (!isAdmin(s.profile)) return fail('Admin only', 403)
-  const rows = body.rows || []
+  const rows = Array.isArray(body.rows) ? body.rows : []
   if (!rows.length) return fail('No rows to import')
+  if (rows.length > 10000) return fail('Maximum 10,000 rows per import — split the file and import in batches.')
 
   const { data: existing } = await service.from('leads').select('phone,email')
-  const seen = new Set((existing || []).map((l) => [l.phone, l.email.toLowerCase()]).flat().filter(Boolean))
+  const seen = new Set((existing || []).map((l) => [l.phone, (l.email || '').toLowerCase()]).flat().filter(Boolean))
   const normalize = (p) => String(p || '').replace(/\D/g, '').slice(-10)
 
   const toInsert = []
   let duplicates = 0
-  for (const r of rows) {
+  for (const r of rows || []) {
+    if (!r || typeof r !== 'object') { duplicates++; continue }
     const phoneN = normalize(r.phone)
-    const emailL = String(r.email || '').trim().toLowerCase()
+    const emailL = cleanStr(r.email, 200)?.toLowerCase() || ''
     const key = phoneN || emailL
     if (key && seen.has(key)) { duplicates++; continue }
     if (phoneN) seen.add(phoneN)
     if (emailL) seen.add(emailL)
     toInsert.push({
-      first_name: r.first_name || '', last_name: r.last_name || '',
-      email: emailL || null, phone: phoneN ? r.phone : (r.phone || null),
-      dob: r.dob || null, state: r.state || null, city: r.city || null,
-      worked_5_of_10: r.worked_5_of_10 ? truthy(r.worked_5_of_10) : null,
-      receiving_benefits: r.receiving_benefits ? truthy(r.receiving_benefits) : null,
-      duration_12m: r.duration_12m ? truthy(r.duration_12m) : null,
-      has_attorney: r.has_attorney ? truthy(r.has_attorney) : null,
-      disability: r.disability || null, notes: r.notes || null,
-      campaign: r.campaign || null,
+      first_name: cleanStr(r.first_name, 100) || '', last_name: cleanStr(r.last_name, 100) || '',
+      email: emailL || null, phone: phoneN ? cleanStr(r.phone, 30) : cleanStr(r.phone, 30),
+      dob: r.dob || null, state: cleanStr(r.state, 10), city: cleanStr(r.city, 120),
+      worked_5_of_10: r.worked_5_of_10 != null && r.worked_5_of_10 !== '' ? truthy(r.worked_5_of_10) : null,
+      receiving_benefits: r.receiving_benefits != null && r.receiving_benefits !== '' ? truthy(r.receiving_benefits) : null,
+      duration_12m: r.duration_12m != null && r.duration_12m !== '' ? truthy(r.duration_12m) : null,
+      has_attorney: r.has_attorney != null && r.has_attorney !== '' ? truthy(r.has_attorney) : null,
+      disability: cleanStr(r.disability, 2000), notes: cleanStr(r.notes, 2000),
+      campaign: cleanStr(r.campaign, 200),
       source: 'import',
-      assigned_to: body.assign_to || null,
+      assigned_to: UUID_RE.test(String(body.assign_to || '')) ? body.assign_to : null,
     })
   }
   let inserted = 0

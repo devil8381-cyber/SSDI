@@ -15,14 +15,28 @@ route('GET', 'setup/status', async () => {
 route('POST', 'setup', async ({ body }) => {
   const { count } = await service.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'admin')
   if ((count || 0) > 0) return fail('Setup already completed — an admin exists', 403)
-  if (!body.email || !body.password || body.password.length < 6) return fail('Email and a 6+ character password are required')
+  const email = String(body.email || '').trim().toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return fail('Enter a valid email address')
+  if (!body.password || String(body.password).length < 6) return fail('Password must be at least 6 characters')
+
+  // Atomic claim via a unique settings row: two racing requests can't both
+  // pass the count check and create two admins — the PK conflict decides.
+  const { error: claimErr } = await service.from('settings').insert({ key: 'setup_done', value: { at: new Date().toISOString() } })
+  if (claimErr) {
+    if (claimErr.code === '23505') return fail('Setup already completed — an admin exists', 403)
+    return fail(claimErr.message)
+  }
   const { data, error } = await service.auth.admin.createUser({
-    email: body.email,
-    password: body.password,
+    email,
+    password: String(body.password),
     email_confirm: true,
-    user_metadata: { name: body.name || body.email.split('@')[0], role: 'admin' },
+    user_metadata: { name: String(body.name || email.split('@')[0]).slice(0, 120), role: 'admin' },
   })
-  if (error) return fail(error.message)
+  if (error) {
+    // Release the claim so a legitimate retry isn't permanently locked out
+    await service.from('settings').delete().eq('key', 'setup_done')
+    return fail(error.message)
+  }
   return json({ ok: true, id: data.user.id })
 })
 
@@ -132,7 +146,8 @@ route('POST', 'notifications/read', async ({ req, body }) => {
   const s = await getSession(req)
   if (!s) return unauthorized()
   let q = service.from('notifications').update({ read: true }).eq('user_id', s.user.id)
-  if (body.ids?.length) q = q.in('id', body.ids)
+  const ids = Array.isArray(body.ids) ? body.ids.slice(0, 100) : [] // cap payload
+  if (ids.length) q = q.in('id', ids)
   else q = q.eq('read', false)
   await q
   return json({ ok: true })

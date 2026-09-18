@@ -1,17 +1,24 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Users2, Trophy, BadgeCheck, Percent, PhoneCall, Mail, Clock, ArrowRight } from 'lucide-react'
-import { api } from '../api'
+import { api, describeError } from '../api'
 import { useAuth } from '../auth'
-import { StatCard, Empty, Bars, fmtDateTime, fmtDuration, leadName, DispositionBadge, Spinner } from '../ui'
+import { StatCard, Empty, Bars, PageError, fmtDateTime, fmtDuration, leadName, DispositionBadge, Spinner } from '../ui'
 import { DISPOSITIONS } from '../config'
 
 export default function Dashboard() {
   const { profile } = useAuth()
   const [data, setData] = useState(null)
+  const [error, setError] = useState(null)
 
-  useEffect(() => { api('/dashboard').then(setData).catch(() => {}) }, [])
+  // Failed loads are recoverable — the user gets a retry, never an eternal spinner
+  const load = useCallback(() => {
+    setError(null)
+    api('/dashboard').then(setData).catch((e) => setError(describeError(e)))
+  }, [])
+  useEffect(() => { load() }, [load])
 
+  if (error) return <div className="mx-auto max-w-2xl pt-10"><PageError message={error} onRetry={load} /></div>
   if (!data) return <div className="flex justify-center py-20"><Spinner className="h-7 w-7" /></div>
 
   const d = data

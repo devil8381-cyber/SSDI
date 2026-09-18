@@ -1,6 +1,8 @@
-import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
+import { useEffect } from 'react'
+import { createBrowserRouter, RouterProvider, Navigate, Outlet, useRouteError } from 'react-router-dom'
+import { supabase } from './api'
 import { useAuth } from './auth'
-import { Spinner } from './ui'
+import { useToast, Spinner } from './ui'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -23,12 +25,53 @@ function Boot() {
   )
 }
 
+// Per-route error boundary: a crash on one page never blanks the whole app.
+function RouteError() {
+  const error = useRouteError()
+  return (
+    <Layout>
+      <div className="card mx-auto mt-10 max-w-md p-8 text-center">
+        <h1 className="text-lg font-bold text-slate-800">This page couldn’t be displayed</h1>
+        <p className="mt-2 text-sm text-slate-500">
+          {error?.message || 'An unexpected error occurred.'} Try again, or head back to the dashboard.
+        </p>
+        <div className="mt-5 flex justify-center gap-2">
+          <button className="btn-primary" onClick={() => window.location.reload()}>Reload</button>
+          <a className="btn-ghost" href="/">Go to dashboard</a>
+        </div>
+      </div>
+    </Layout>
+  )
+}
+
+// Signs the user out cleanly when the API client reports an unrecoverable
+// session (token refresh failed). Redirect happens via the auth state change.
+function SessionWatcher() {
+  const toast = useToast()
+  useEffect(() => {
+    const onExpired = () => {
+      toast('Your session expired — please sign in again.', 'error')
+      supabase.auth.signOut()
+    }
+    window.addEventListener('leaddesk:session-expired', onExpired)
+    return () => window.removeEventListener('leaddesk:session-expired', onExpired)
+  }, [toast])
+  return null
+}
+
 function RequireAuth() {
   const { session, profile, loading } = useAuth()
   if (loading) return <Boot />
   if (!session) return <Navigate to="/login" replace />
   if (!profile) return <Boot />
-  return <Layout><Outlet /></Layout>
+  return (
+    <>
+      <SessionWatcher />
+      <Layout>
+        <Outlet />
+      </Layout>
+    </>
+  )
 }
 
 function RequireAdmin() {
@@ -37,27 +80,33 @@ function RequireAdmin() {
   return <Outlet />
 }
 
+const router = createBrowserRouter([
+  { path: '/login', element: <Login /> },
+  { path: '/upload/:token', element: <ClaimantUpload />, errorElement: <RouteError /> },
+  {
+    element: <RequireAuth />,
+    errorElement: <RouteError />,
+    children: [
+      { path: '/', element: <Dashboard /> },
+      { path: '/leads', element: <Leads /> },
+      { path: '/leads/:id', element: <LeadDetail />, errorElement: <RouteError /> },
+      { path: '/tasks', element: <Tasks /> },
+      { path: '/documents', element: <Documents /> },
+      { path: '/scripts', element: <Scripts /> },
+      { path: '/templates', element: <Templates /> },
+      {
+        element: <RequireAdmin />,
+        children: [
+          { path: '/admin/users', element: <Users /> },
+          { path: '/admin/smtp', element: <Smtp /> },
+          { path: '/admin/integrations', element: <Integrations /> },
+        ],
+      },
+    ],
+  },
+  { path: '*', element: <Navigate to="/" replace /> },
+])
+
 export default function App() {
-  const { session } = useAuth()
-  return (
-    <Routes>
-      <Route path="/login" element={session ? <Navigate to="/" replace /> : <Login />} />
-      <Route path="/upload/:token" element={<ClaimantUpload />} />
-      <Route element={<RequireAuth />}>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/leads" element={<Leads />} />
-        <Route path="/leads/:id" element={<LeadDetail />} />
-        <Route path="/tasks" element={<Tasks />} />
-        <Route path="/documents" element={<Documents />} />
-        <Route path="/scripts" element={<Scripts />} />
-        <Route path="/templates" element={<Templates />} />
-        <Route element={<RequireAdmin />}>
-          <Route path="/admin/users" element={<Users />} />
-          <Route path="/admin/smtp" element={<Smtp />} />
-          <Route path="/admin/integrations" element={<Integrations />} />
-        </Route>
-      </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
-  )
+  return <RouterProvider router={router} />
 }

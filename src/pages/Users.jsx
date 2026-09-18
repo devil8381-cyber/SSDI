@@ -1,27 +1,43 @@
-import { useEffect, useState } from 'react'
-import { Plus, KeyRound, UserCog, ShieldCheck } from 'lucide-react'
-import { api } from '../api'
+import { useCallback, useEffect, useState } from 'react'
+import { Plus, KeyRound, UserCog, ShieldCheck, Loader2 } from 'lucide-react'
+import { api, describeError } from '../api'
 import { useAuth } from '../auth'
-import { useToast, Modal, Empty, Spinner, fmtDuration, fmtDateTime } from '../ui'
+import { useAction } from '../lib/hooks'
+import { emailRule, maxLen, minLen, required, sanitizeText, validateForm } from '../lib/validate'
+import { useToast, Modal, Empty, Spinner, PageError, fmtDuration, fmtDateTime } from '../ui'
 
 export default function Users() {
   const { profile } = useAuth()
   const toast = useToast()
   const [users, setUsers] = useState(null)
+  const [loadError, setLoadError] = useState(null)
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState(null)
   const [pwFor, setPwFor] = useState(null)
+  const [busyId, setBusyId] = useState(null)
 
-  const load = () => api('/users').then((d) => setUsers(d.users || [])).catch((e) => toast(e.message, 'error'))
-  useEffect(load, [])
+  const load = useCallback(() => api('/users')
+    .then((d) => { setUsers(d.users || []); setLoadError(null) })
+    .catch((e) => setLoadError(describeError(e))), [])
+  useEffect(() => { load() }, [load])
 
-  const toggleActive = async (u) => {
+  // Optimistic toggle: the status pill flips immediately; rolls back on failure
+  const { run: toggleActive, busy: toggling } = useAction(async (u) => {
+    setBusyId(u.id)
+    const next = !u.is_active
+    setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, is_active: next } : x)))
     try {
-      await api(`/users/${u.id}`, { method: 'PATCH', body: { is_active: !u.is_active } })
-      toast(u.is_active ? `${u.name} deactivated` : `${u.name} activated`)
-      load()
-    } catch (e) { toast(e.message, 'error') }
-  }
+      await api(`/users/${u.id}`, { method: 'PATCH', body: { is_active: next } })
+      return { name: u.name, next }
+    } catch (e) {
+      setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, is_active: !next } : x)))
+      throw e
+    }
+  }, {
+    toast,
+    successMsg: (r) => (r?.next ? `${r.name} activated` : `${r?.name || 'User'} deactivated`),
+    onDone: () => { setBusyId(null); load() },
+  })
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
@@ -31,7 +47,8 @@ export default function Users() {
       </div>
 
       <div className="card overflow-hidden">
-        {!users ? <div className="flex justify-center py-16"><Spinner className="h-7 w-7" /></div>
+        {!users && !loadError ? <div className="flex justify-center py-16"><Spinner className="h-7 w-7" /></div>
+          : loadError ? <PageError message={loadError} onRetry={load} />
           : users.length === 0 ? <Empty icon={UserCog} title="No users" />
           : (
           <div className="overflow-x-auto">
@@ -54,7 +71,7 @@ export default function Users() {
                         {u.role === 'admin' && <ShieldCheck size={12} />} {u.role}
                       </span>
                     </td>
-                    <td className="td">{u.leadCount}</td>
+                    <td className="td">{u.leadCount ?? 0}</td>
                     <td className="td">{fmtDuration(u.activeToday)}</td>
                     <td className="td text-slate-500">{u.last_active_at ? fmtDateTime(u.last_active_at) : 'never'}</td>
                     <td className="td">
@@ -67,8 +84,12 @@ export default function Users() {
                         <button className="btn-ghost !px-2 !py-1.5 text-xs" onClick={() => setEditing(u)}>Edit</button>
                         <button className="btn-ghost !px-2 !py-1.5 text-xs" onClick={() => setPwFor(u)} title="Reset password"><KeyRound size={13} /></button>
                         {u.id !== profile.id && (
-                          <button className={`btn-ghost !px-2 !py-1.5 text-xs ${u.is_active ? 'text-rose-600' : 'text-emerald-600'}`} onClick={() => toggleActive(u)}>
-                            {u.is_active ? 'Disable' : 'Enable'}
+                          <button
+                            className={`btn-ghost !px-2 !py-1.5 text-xs ${u.is_active ? 'text-rose-600' : 'text-emerald-600'}`}
+                            onClick={() => toggleActive(u)}
+                            disabled={(toggling && busyId === u.id) || u.id === profile.id}
+                          >
+                            {(toggling && busyId === u.id) ? <Loader2 size={13} className="animate-spin" /> : u.is_active ? 'Disable' : 'Enable'}
                           </button>
                         )}
                       </div>
@@ -91,18 +112,51 @@ export default function Users() {
 function AddUser({ open, onClose, onDone }) {
   const toast = useToast()
   const [f, setF] = useState({ name: '', email: '', password: '', role: 'agent' })
+  const [errors, setErrors] = useState({})
   const [busy, setBusy] = useState(false)
+  const [formErr, setFormErr] = useState('')
+
   const save = async () => {
+    if (busy) return
+    const errs = validateForm(f, {
+      name: [maxLen(120)],
+      email: [required('Email'), emailRule()],
+      password: [required('Password'), minLen(6)],
+    })
+    setErrors(errs)
+    if (Object.keys(errs).length) return
     setBusy(true)
-    try { await api('/users', { method: 'POST', body: f }); toast(`User ${f.name || f.email} created`); setF({ name: '', email: '', password: '', role: 'agent' }); onDone() }
-    catch (e) { toast(e.message, 'error') } finally { setBusy(false) }
+    setFormErr('')
+    try {
+      await api('/users', {
+        method: 'POST',
+        body: { name: sanitizeText(f.name, 120), email: sanitizeText(f.email, 200).toLowerCase(), password: f.password, role: f.role },
+      })
+      toast(`User ${f.name || f.email} created — share the password with them securely`)
+      setF({ name: '', email: '', password: '', role: 'agent' })
+      onDone()
+    } catch (e) {
+      setFormErr(describeError(e))
+    } finally {
+      setBusy(false)
+    }
   }
+
   return (
     <Modal open={open} onClose={onClose} title="Create user">
       <div className="space-y-3">
+        {formErr && <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{formErr}</p>}
         <div><label className="label">Full name</label><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
-        <div><label className="label">Email *</label><input className="input" type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></div>
-        <div><label className="label">Password * (share it with them securely)</label><input className="input" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} placeholder="min 6 characters" /></div>
+        <div>
+          <label className="label">Email *</label>
+          <input className={`input ${errors.email ? '!border-rose-400' : ''}`} type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
+          {errors.email && <p className="mt-1 text-xs text-rose-600">{errors.email}</p>}
+        </div>
+        <div>
+          <label className="label">Password * (share it with them securely)</label>
+          <input className={`input ${errors.password ? '!border-rose-400' : ''}`} value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} placeholder="min 6 characters" />
+          {errors.password && <p className="mt-1 text-xs text-rose-600">{errors.password}</p>}
+        </div>
         <div><label className="label">Role</label>
           <select className="input" value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>
             <option value="agent">Agent</option><option value="admin">Admin</option>
@@ -110,7 +164,7 @@ function AddUser({ open, onClose, onDone }) {
         </div>
         <div className="flex justify-end gap-2">
           <button className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" onClick={save} disabled={busy || !f.email || f.password.length < 6}>{busy ? 'Creating…' : 'Create user'}</button>
+          <button className="btn-primary" onClick={save} disabled={busy}>{busy ? 'Creating…' : 'Create user'}</button>
         </div>
       </div>
     </Modal>
@@ -121,10 +175,23 @@ function EditUser({ user, onClose, onDone }) {
   const toast = useToast()
   const [name, setName] = useState(user?.name || '')
   const [role, setRole] = useState(user?.role || 'agent')
+  const [busy, setBusy] = useState(false)
   useEffect(() => { setName(user?.name || ''); setRole(user?.role || 'agent') }, [user])
+
   const save = async () => {
-    try { await api(`/users/${user.id}`, { method: 'PATCH', body: { name, role } }); toast('User updated'); onDone() } catch (e) { toast(e.message, 'error') }
+    if (busy) return
+    setBusy(true)
+    try {
+      await api(`/users/${user.id}`, { method: 'PATCH', body: { name: sanitizeText(name, 120), role } })
+      toast('User updated')
+      onDone()
+    } catch (e) {
+      toast(describeError(e), 'error')
+    } finally {
+      setBusy(false)
+    }
   }
+
   return (
     <Modal open={!!user} onClose={onClose} title={`Edit ${user?.name || ''}`}>
       <div className="space-y-3">
@@ -136,7 +203,7 @@ function EditUser({ user, onClose, onDone }) {
         </div>
         <div className="flex justify-end gap-2">
           <button className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" onClick={save}>Save</button>
+          <button className="btn-primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
         </div>
       </div>
     </Modal>
@@ -146,16 +213,33 @@ function EditUser({ user, onClose, onDone }) {
 function ResetPassword({ user, onClose }) {
   const toast = useToast()
   const [pw, setPw] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
   const save = async () => {
-    try { await api(`/users/${user.id}`, { method: 'PATCH', body: { password: pw } }); toast(`Password reset for ${user.name}`); setPw(''); onClose() } catch (e) { toast(e.message, 'error') }
+    if (busy) return
+    setBusy(true)
+    setErr('')
+    try {
+      await api(`/users/${user.id}`, { method: 'PATCH', body: { password: pw } })
+      toast(`Password reset for ${user.name} — share it securely`)
+      setPw('')
+      onClose()
+    } catch (e) {
+      setErr(describeError(e))
+    } finally {
+      setBusy(false)
+    }
   }
+
   return (
     <Modal open={!!user} onClose={onClose} title={`Reset password — ${user?.name || ''}`}>
       <div className="space-y-3">
+        {err && <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{err}</p>}
         <div><label className="label">New password</label><input className="input" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="min 6 characters" autoFocus /></div>
         <div className="flex justify-end gap-2">
           <button className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" onClick={save} disabled={pw.length < 6}>Reset</button>
+          <button className="btn-primary" onClick={save} disabled={busy || pw.length < 6}>{busy ? 'Resetting…' : 'Reset'}</button>
         </div>
       </div>
     </Modal>

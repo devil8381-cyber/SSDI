@@ -63,7 +63,7 @@ export async function logActivity(lead_id, user_id, type, title, detail = {}) {
   await service.from('leads').update({ last_activity_at: new Date().toISOString() }).eq('id', lead_id)
 }
 export async function notify(userIds, title, body, lead_id = null) {
-  const ids = (userIds || []).filter(Boolean)
+  const ids = (userIds || []).filter(Boolean).slice(0, 50) // cap: notifications are fan-out, never huge
   if (!ids.length) return
   await service.from('notifications').insert(ids.map((user_id) => ({ user_id, title, body, lead_id })))
 }
@@ -78,6 +78,9 @@ export function render(tpl, vars) {
 }
 
 // ── email engine ─────────────────────────────────────────────
+export const DISPOSITIONS = ['New', 'Working', 'VM', 'Callback', 'NIS', 'Not Interested', 'Signed', 'Approved', 'Criteria Not Met']
+export const LEAD_SOURCES = ['manual', 'import', 'meta']
+
 export async function sendLeadEmail({ lead, agent, subject, html, purpose, baseUrl }) {
   const { data: profiles } = await service.from('smtp_profiles').select('*').eq('is_active', true)
   const prof =
@@ -87,20 +90,39 @@ export async function sendLeadEmail({ lead, agent, subject, html, purpose, baseU
   if (!prof) throw new Error('No active SMTP profile configured. Ask the admin to add one under Admin → SMTP.')
   const pass = decrypt(prof.password_enc)
   if (!pass) throw new Error('SMTP password could not be decrypted — check APP_ENCRYPTION_KEY')
+
+  // Daily-limit guard: protects sender reputation before the email is handed
+  // to the SMTP provider (better than a bounce/storm after the fact).
+  const dayStart = new Date().toISOString().slice(0, 10)
+  const { count } = await service
+    .from('email_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('smtp_profile_id', prof.id)
+    .gte('created_at', dayStart)
+  if ((count || 0) >= (prof.daily_limit || 300)) {
+    throw new Error(`Daily send limit reached for "${prof.name}" (${prof.daily_limit}/day). Use a different SMTP profile or wait until tomorrow.`)
+  }
+
   const transport = nodemailer.createTransport({
     host: prof.host,
     port: prof.port,
     secure: !!prof.secure,
     auth: { user: prof.username, pass },
+    // Hard timeouts so a dead SMTP server can never hang the request forever
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 30000,
   })
   const id = crypto.randomUUID()
-  const pixel = `<img src="${baseUrl}/.netlify/functions/track-open?t=${id}" width="1" height="1" alt="" style="display:none" />`
   const vars = leadVars(lead, agent)
+  const finalSubject = render(subject, vars)
+  const finalHtml = render(html, vars) +
+    `<img src="${baseUrl}/.netlify/functions/track-open?t=${id}" width="1" height="1" alt="" style="display:none" />`
   const info = await transport.sendMail({
     from: prof.from_name ? `"${prof.from_name}" <${prof.from_email}>` : prof.from_email,
     to: lead.email,
-    subject: render(subject, vars),
-    html: render(html, vars) + pixel,
+    subject: finalSubject,
+    html: finalHtml,
   })
   await service.from('email_messages').insert({
     id,
@@ -109,8 +131,8 @@ export async function sendLeadEmail({ lead, agent, subject, html, purpose, baseU
     smtp_profile_id: prof.id,
     purpose,
     to_email: lead.email,
-    subject: render(subject, vars),
-    html: render(html, vars) + pixel,
+    subject: finalSubject,
+    html: finalHtml,
   })
   return { id, messageId: info.messageId, profile: prof.name }
 }

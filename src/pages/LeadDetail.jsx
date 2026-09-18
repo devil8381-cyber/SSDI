@@ -4,10 +4,38 @@ import {
   ArrowLeft, Mail, FilePlus2, Trash2, Save, Upload, Play, Copy, Download, Plus,
   CheckCircle2, Circle, FileText, Mic, Send, Clock, Zap, Activity, Loader2,
 } from 'lucide-react'
-import { api, uploadToSignedUrl } from '../api'
+import { api, describeError } from '../api'
 import { useAuth } from '../auth'
-import { useToast, Modal, Spinner, Empty, DispositionBadge, fmtDateTime, ageFrom } from '../ui'
+import { useAction, useDirtyGuard } from '../lib/hooks'
+import { validateForm, emailRule, phoneRule, maxLen, sanitizeText } from '../lib/validate'
+import { useToast, Modal, Spinner, Empty, PageError, DispositionBadge, fmtDateTime, ageFrom } from '../ui'
 import { DISPOSITIONS, CRITERIA_REASONS, STATES, DOC_TYPES, SMTP_PURPOSES, TASK_TYPES } from '../config'
+
+// Only these fields are user-editable in the info form. Dirty detection compares
+// exactly this list so server-side metadata (updated_at, disposition changes by
+// teammates…) never falsely marks the form dirty.
+const EDIT_KEYS = [
+  'first_name', 'last_name', 'email', 'phone', 'dob', 'state', 'city',
+  'worked_5_of_10', 'receiving_benefits', 'duration_12m', 'has_attorney',
+  'disability', 'notes', 'next_followup_at',
+]
+const snapshot = (lead) => JSON.stringify(EDIT_KEYS.map((k) => lead?.[k] ?? null))
+
+// datetime-local inputs speak local wall-clock; the API speaks UTC ISO.
+// Convert on the way out (and render local on the way in) or follow-ups drift
+// by the UTC offset.
+const toLocalInputValue = (iso) => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d)) return ''
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+const toUtcIso = (localValue) => {
+  if (!localValue) return null
+  const d = new Date(localValue)
+  return isNaN(d) ? null : d.toISOString()
+}
 
 export default function LeadDetail() {
   const { id } = useParams()
@@ -17,75 +45,128 @@ export default function LeadDetail() {
   const admin = profile?.role === 'admin'
 
   const [data, setData] = useState(null)
-  const [agents, setAgents] = useState([])
   const [form, setForm] = useState(null)
+  const [loadError, setLoadError] = useState(null)
+  const [agents, setAgents] = useState([])
   const [showEmail, setShowEmail] = useState(false)
   const [showDocReq, setShowDocReq] = useState(false)
-  const [viewer, setViewer] = useState(null) // recording row being viewed
+  const [viewer, setViewer] = useState(null)
 
-  const load = useCallback(() => {
-    api(`/leads/${id}`).then((d) => {
+  // ── data loading that never clobbers in-progress edits ────────────────
+  // Background refreshes (recording poll, post-action reloads) merge into
+  // `data` immediately, but `form` is only resynced while the agent hasn't
+  // typed anything (previously a 6s poll could wipe half-typed notes).
+  const formDirtyRef = useRef(false)
+  const load = useCallback(async () => {
+    try {
+      const d = await api(`/leads/${id}`)
+      if (!d?.lead) throw new Error('Lead not found — it may have been deleted.')
       setData(d)
-      setForm({ ...d.lead })
-    }).catch((e) => toast(e.message, 'error'))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      if (!formDirtyRef.current) setForm({ ...d.lead })
+      setLoadError(null)
+    } catch (e) {
+      setLoadError(describeError(e))
+    }
   }, [id])
+
   useEffect(() => { load() }, [load])
   useEffect(() => { api('/users/agents').then((d) => setAgents(d.users || [])).catch(() => {}) }, [])
 
-  // poll while a recording is uploading/processing so it flips to "ready"
+  // Keep the ref in sync with computed dirty state
+  const dirty = useMemo(
+    () => !!(form && data?.lead && snapshot(form) !== snapshot(data.lead)),
+    [form, data]
+  )
+  useEffect(() => { formDirtyRef.current = dirty }, [dirty])
+
+  // Warn before refresh/close and before in-app navigation with unsaved edits
+  useDirtyGuard(dirty)
+
+  // While any recording is uploading/processing, poll until it lands in Drive
+  const pendingRecording = data?.recordings?.some((r) => r.status === 'uploading' || r.status === 'processing')
   useEffect(() => {
-    const pending = data?.recordings?.some((r) => r.status === 'uploading' || r.status === 'processing')
-    if (!pending) return
+    if (!pendingRecording) return
     const t = setTimeout(load, 6000)
     return () => clearTimeout(t)
-  }, [data, load])
+  }, [pendingRecording, load])
 
-  if (!data || !form) return <div className="flex justify-center py-20"><Spinner className="h-7 w-7" /></div>
-  const { lead } = data
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
 
-  const setDisposition = async (value, reason) => {
+  // ── actions (all busy-guarded; failures toast with recovery hints) ────
+
+  // Optimistic disposition: the badge flips instantly, rolls back to server
+  // truth if the PATCH fails. This is the agent's #1 most-repeated action.
+  const { run: applyDisposition, busy: dispositionBusy } = useAction(async (value, reason) => {
+    const prev = data.lead
+    setData((d) => ({
+      ...d,
+      lead: { ...d.lead, disposition: value, disposition_reason: value === 'Criteria Not Met' ? (reason ?? d.lead.disposition_reason) : null },
+    }))
     try {
-      await api(`/leads/${id}`, { method: 'PATCH', body: { disposition: value, disposition_reason: reason || null } })
-      toast(`Disposition set to ${value}`)
-      load()
-    } catch (e) { toast(e.message, 'error') }
-  }
-  const saveInfo = async () => {
-    const body = {}
-    for (const k of ['first_name', 'last_name', 'email', 'phone', 'dob', 'state', 'city', 'disability', 'notes', 'worked_5_of_10', 'receiving_benefits', 'duration_12m', 'has_attorney']) {
-      body[k] = form[k] === '' ? null : form[k]
+      await api(`/leads/${id}`, { method: 'PATCH', body: { disposition: value, disposition_reason: value === 'Criteria Not Met' ? (reason ?? null) : null } })
+    } catch (e) {
+      setData((d) => ({ ...d, lead: prev })) // rollback to what the server had
+      throw e
     }
-    body.next_followup_at = form.next_followup_at || null
-    try {
-      await api(`/leads/${id}`, { method: 'PATCH', body })
-      toast('Lead saved')
-      load()
-    } catch (e) { toast(e.message, 'error') }
-  }
-  const reassign = async (agentId) => {
+  }, { toast, onDone: load })
+
+  const { run: saveInfo, busy: saving } = useAction(async () => {
+    const errs = validateForm(form, {
+      first_name: [maxLen(100)],
+      email: [emailRule()],
+      phone: [phoneRule()],
+      city: [maxLen(120)],
+      notes: [maxLen(5000)],
+      disability: [maxLen(2000)],
+    })
+    if (Object.keys(errs).length) throw new Error(Object.values(errs)[0])
+    const body = {}
+    for (const k of EDIT_KEYS) {
+      if (k === 'next_followup_at') body[k] = toUtcIso(form[k])
+      else if (typeof form[k] === 'string') body[k] = sanitizeText(form[k], k === 'notes' ? 5000 : k === 'disability' ? 2000 : 200)
+      else body[k] = form[k] === '' ? null : form[k]
+    }
+    await api(`/leads/${id}`, { method: 'PATCH', body })
+  }, { toast, successMsg: 'Lead saved', onDone: load })
+
+  const { run: reassign, busy: reassigning } = useAction(async (agentId) => {
+    const prev = data.lead.assigned_to
+    setData((d) => ({ ...d, lead: { ...d.lead, assigned_to: agentId || null } })) // optimistic
     try {
       await api(`/leads/${id}`, { method: 'PATCH', body: { assigned_to: agentId || null } })
-      toast('Assignment updated')
-      load()
-    } catch (e) { toast(e.message, 'error') }
-  }
-  const del = async () => {
-    if (!confirm('Delete this lead and all its data? This cannot be undone.')) return
-    try { await api(`/leads/${id}`, { method: 'DELETE' }); toast('Lead deleted'); navigate('/leads') } catch (e) { toast(e.message, 'error') }
-  }
+    } catch (e) {
+      setData((d) => ({ ...d, lead: { ...d.lead, assigned_to: prev } }))
+      throw e
+    }
+  }, { toast, onDone: load })
 
-  const upsertTask = async (title, due_at, type) => {
-    try {
-      await api('/tasks', { method: 'POST', body: { title, lead_id: id, due_at: due_at || null, type: type || 'callback', assigned_to: lead.assigned_to || profile.id } })
-      toast('Task added')
-      load()
-    } catch (e) { toast(e.message, 'error') }
+  const { run: del, busy: deleting } = useAction(async () => {
+    if (!confirm('Delete this lead and all its data? This cannot be undone.')) return
+    await api(`/leads/${id}`, { method: 'DELETE' })
+    navigate('/leads')
+  }, { toast, successMsg: 'Lead deleted' })
+
+  const { run: addTask, busy: addingTask } = useAction(async (title, due_at, type) => {
+    await api('/tasks', {
+      method: 'POST',
+      body: { title, lead_id: id, due_at: toUtcIso(due_at), type: type || 'callback', assigned_to: data.lead.assigned_to || profile.id },
+    })
+  }, { toast, successMsg: 'Task added', onDone: load })
+
+  const { run: completeTask, busy: completingTask } = useAction(async (t) => {
+    await api(`/tasks/${t.id}`, { method: 'PATCH', body: { status: t.status === 'open' ? 'done' : 'open' } })
+  }, { toast, onDone: load })
+
+  if (loadError) {
+    return (
+      <div className="mx-auto max-w-3xl pt-10">
+        <button onClick={() => navigate('/leads')} className="mb-4 flex items-center gap-1 text-xs text-slate-400 hover:text-brand-600"><ArrowLeft size={13} /> Back to leads</button>
+        <PageError message={loadError} onRetry={load} />
+      </div>
+    )
   }
-  const completeTask = async (t, status) => {
-    try { await api(`/tasks/${t.id}`, { method: 'PATCH', body: { status } }); load() } catch (e) { toast(e.message, 'error') }
-  }
+  if (!data || !form) return <div className="flex justify-center py-20"><Spinner className="h-7 w-7" /></div>
+  const { lead } = data
 
   return (
     <div className="mx-auto max-w-7xl space-y-5">
@@ -96,29 +177,49 @@ export default function LeadDetail() {
           <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="text-xl font-bold text-slate-800">{lead.first_name} {lead.last_name}</h1>
             <DispositionBadge value={lead.disposition} />
-            {lead.disposition_reason && <span className="text-xs text-slate-400">Reason: {lead.disposition_reason}</span>}
+            {lead.disposition_reason ? <span className="text-xs text-slate-400">Reason: {lead.disposition_reason}</span> : null}
           </div>
           <p className="mt-0.5 text-sm text-slate-500">
             {lead.phone || 'no phone'} · {lead.email || 'no email'} · {ageFrom(lead.dob) ?? '?'} yrs · {lead.city || lead.state || '—'} · <span className="capitalize">{lead.source}</span>{lead.form_name ? ` · ${lead.form_name}` : ''}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button className="btn-ghost" onClick={() => setShowEmail(true)}><Mail size={15} /> Send email</button>
+          <button className="btn-ghost" onClick={() => setShowEmail(true)} disabled={!lead.email} title={lead.email ? '' : 'This lead has no email address'}>
+            <Mail size={15} /> Send email
+          </button>
           <button className="btn-ghost" onClick={() => setShowDocReq(true)}><FilePlus2 size={15} /> Request documents</button>
-          {admin && <button className="btn-danger !px-2.5" onClick={del} title="Delete lead"><Trash2 size={15} /></button>}
+          {admin && <button className="btn-danger !px-2.5" onClick={del} disabled={deleting} title="Delete lead"><Loader2 size={15} className={deleting ? 'animate-spin' : 'hidden'} /><Trash2 size={15} className={deleting ? 'hidden' : ''} /></button>}
         </div>
       </div>
+
+      {/* dirty indicator — the agent always knows when there are unsaved edits */}
+      {dirty && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+          <span>✏️ You have unsaved changes to this lead.</span>
+          <button className="btn-primary !py-1.5" onClick={saveInfo} disabled={saving}>{saving ? 'Saving…' : 'Save now'}</button>
+        </div>
+      )}
 
       {/* disposition bar */}
       <div className="card flex flex-wrap items-center gap-3 p-4">
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Disposition</span>
-        <select className="input w-auto" value={lead.disposition} onChange={(e) => setDisposition(e.target.value, e.target.value === 'Criteria Not Met' ? lead.disposition_reason : null)}>
+        <select
+          className="input w-auto"
+          value={lead.disposition}
+          disabled={dispositionBusy}
+          onChange={(e) => applyDisposition(e.target.value, e.target.value === 'Criteria Not Met' ? lead.disposition_reason : null)}
+        >
           {DISPOSITIONS.map((d) => <option key={d}>{d}</option>)}
         </select>
         {lead.disposition === 'Criteria Not Met' && (
           <>
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Reason</span>
-            <select className="input w-auto" value={lead.disposition_reason || ''} onChange={(e) => setDisposition('Criteria Not Met', e.target.value)}>
+            <select
+              className="input w-auto"
+              value={lead.disposition_reason || ''}
+              disabled={dispositionBusy}
+              onChange={(e) => applyDisposition('Criteria Not Met', e.target.value)}
+            >
               <option value="">Select reason…</option>
               {CRITERIA_REASONS.map((r) => <option key={r}>{r}</option>)}
             </select>
@@ -127,19 +228,21 @@ export default function LeadDetail() {
         {admin && (
           <>
             <span className="ml-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Agent</span>
-            <select className="input w-auto" value={lead.assigned_to || ''} onChange={(e) => reassign(e.target.value)}>
+            <select className="input w-auto" value={lead.assigned_to || ''} disabled={reassigning} onChange={(e) => reassign(e.target.value)}>
               <option value="">Unassigned</option>
               {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </>
         )}
-        {lead.next_followup_at && <span className="ml-auto flex items-center gap-1.5 text-xs text-brand-700 bg-brand-50 rounded-lg px-2.5 py-1.5"><Clock size={13} /> Follow-up: {fmtDateTime(lead.next_followup_at)}</span>}
+        {lead.next_followup_at && (
+          <span className="ml-auto flex items-center gap-1.5 rounded-lg bg-brand-50 px-2.5 py-1.5 text-xs text-brand-700"><Clock size={13} /> Follow-up: {fmtDateTime(lead.next_followup_at)}</span>
+        )}
       </div>
 
       <div className="grid gap-5 xl:grid-cols-3">
         {/* left column */}
         <div className="space-y-5 xl:col-span-2">
-          <InfoCard form={form} set={set} saveInfo={saveInfo} />
+          <InfoCard form={form} set={set} saveInfo={saveInfo} saving={saving} />
 
           <RecordingsCard recordings={data.recordings} onOpen={setViewer} onChange={load} leadId={id} />
 
@@ -148,13 +251,13 @@ export default function LeadDetail() {
           <div className="card overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
               <h2 className="text-sm font-semibold text-slate-700">Tasks</h2>
-              <QuickTask onAdd={upsertTask} />
+              <QuickTask onAdd={addTask} busy={addingTask} />
             </div>
             {data.tasks.length === 0 ? <Empty title="No tasks for this lead" /> : (
               <div className="divide-y divide-slate-100">
                 {data.tasks.map((t) => (
                   <div key={t.id} className="flex items-center gap-3 px-5 py-2.5">
-                    <button onClick={() => completeTask(t, t.status === 'open' ? 'done' : 'open')} className="text-slate-300 hover:text-emerald-500">
+                    <button onClick={() => completeTask(t)} disabled={completingTask} className="text-slate-300 hover:text-emerald-500 disabled:opacity-40">
                       {t.status === 'open' ? <Circle size={17} /> : <CheckCircle2 size={17} className="text-emerald-500" />}
                     </button>
                     <div className="min-w-0 flex-1">
@@ -196,10 +299,15 @@ export default function LeadDetail() {
 }
 
 // ── editable lead info ────────────────────────────────────────
-function InfoCard({ form, set, saveInfo }) {
+function InfoCard({ form, set, saveInfo, saving }) {
   const boolRow = (k, label) => (
     <label className="flex items-center gap-2.5 rounded-lg border border-slate-200 px-3 py-2.5 text-sm">
-      <input type="checkbox" checked={!!form[k]} onChange={(e) => set(k)({ target: { value: e.target.checked } })} className="h-4 w-4 rounded border-slate-300" />
+      <input
+        type="checkbox"
+        checked={!!form[k]}
+        onChange={(e) => set(k)({ target: { value: e.target.checked } })}
+        className="h-4 w-4 rounded border-slate-300"
+      />
       <span className="text-slate-600">{label}</span>
     </label>
   )
@@ -207,7 +315,9 @@ function InfoCard({ form, set, saveInfo }) {
     <div className="card p-5">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-700">Lead details</h2>
-        <button className="btn-primary" onClick={saveInfo}><Save size={14} /> Save</button>
+        <button className="btn-primary" onClick={saveInfo} disabled={saving}>
+          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {saving ? 'Saving…' : 'Save'}
+        </button>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div><label className="label">First name</label><input className="input" value={form.first_name || ''} onChange={set('first_name')} /></div>
@@ -220,7 +330,7 @@ function InfoCard({ form, set, saveInfo }) {
         </div>
         <div><label className="label">City</label><input className="input" value={form.city || ''} onChange={set('city')} /></div>
         <div><label className="label">Next follow-up</label>
-          <input className="input" type="datetime-local" value={form.next_followup_at ? form.next_followup_at.slice(0, 16) : ''} onChange={set('next_followup_at')} />
+          <input className="input" type="datetime-local" value={toLocalInputValue(form.next_followup_at)} onChange={(e) => set('next_followup_at')({ target: { value: e.target.value } })} />
         </div>
         <div className="col-span-2"><label className="label">Disability</label><textarea className="input" rows={2} value={form.disability || ''} onChange={set('disability')} /></div>
       </div>
@@ -244,7 +354,7 @@ function RecordingsCard({ recordings, onOpen, onChange, leadId }) {
   const fileRef = useRef(null)
   const [uploadingType, setUploadingType] = useState(null)
 
-  const upload = async (type) => {
+  const upload = (type) => {
     const input = fileRef.current
     input.value = ''
     input.dataset.type = type
@@ -253,15 +363,20 @@ function RecordingsCard({ recordings, onOpen, onChange, leadId }) {
   const onFile = async (e) => {
     const file = e.target.files?.[0]
     const type = e.target.dataset.type
-    if (!file || !type) return
+    if (!file || !type || uploadingType) return
+    if (file.size > 200 * 1024 * 1024) { toast('Recordings must be under 200 MB.', 'error'); return }
     setUploadingType(type)
     try {
       const { recording, signed_url } = await api(`/leads/${leadId}/recordings`, { method: 'POST', body: { type, file_name: file.name } })
-      await uploadToSignedUrl(signed_url, file)
+      await uploadToSignedUrlSafe(signed_url, file)
       await api('/recordings/confirm', { method: 'POST', body: { recording_id: recording.id } })
-      toast(`${type === 'frontend' ? 'Front-end' : 'Verification'} recording uploading — moving to Google Drive…`)
+      toast('Recording uploaded — moving to Google Drive…')
       onChange()
-    } catch (err) { toast(err.message, 'error') } finally { setUploadingType(null) }
+    } catch (err) {
+      toast(describeError(err), 'error')
+    } finally {
+      setUploadingType(null)
+    }
   }
 
   const Row = ({ type }) => {
@@ -273,7 +388,10 @@ function RecordingsCard({ recordings, onOpen, onChange, leadId }) {
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-slate-700">{label}</p>
           <p className="text-xs text-slate-400">
-            {!rec ? 'Not uploaded yet' : rec.status === 'ready' ? rec.file_name : rec.status === 'failed' ? `Failed: ${rec.error || 'unknown'}` : `${rec.status}…`}
+            {!rec ? 'Not uploaded yet'
+              : rec.status === 'ready' ? rec.file_name
+              : rec.status === 'failed' ? `Failed: ${rec.error || 'unknown error — try again'}`
+              : `${rec.status}…`}
           </p>
         </div>
         {!rec || rec.status === 'failed' ? (
@@ -301,13 +419,22 @@ function RecordingsCard({ recordings, onOpen, onChange, leadId }) {
   )
 }
 
+// tiny wrapper keeping the upload import local & explicit
+async function uploadToSignedUrlSafe(signedUrl, file) {
+  const mod = await import('../api')
+  return mod.uploadToSignedUrl(signedUrl, file)
+}
+
 function RecordingViewer({ recording, onClose }) {
   const [script, setScript] = useState(null)
+  const [scriptError, setScriptError] = useState(null)
   useEffect(() => {
     if (!recording) return
+    setScript(null)
+    setScriptError(null)
     api(`/scripts?type=${recording.type}`)
       .then((d) => setScript((d.scripts || [])[0] || null))
-      .catch(() => setScript(null))
+      .catch((e) => setScriptError(describeError(e)))
   }, [recording])
   if (!recording) return null
   const title = recording.type === 'frontend' ? 'Front-End Recording' : 'Verification Recording'
@@ -316,7 +443,7 @@ function RecordingViewer({ recording, onClose }) {
       <div className="grid gap-4 md:grid-cols-2">
         <div>
           <p className="label">Recording (Google Drive)</p>
-          {recording.drive_link ? (
+          {recording.drive_link && recording.drive_file_id ? (
             <iframe
               title="recording"
               src={`https://drive.google.com/file/d/${recording.drive_file_id}/preview`}
@@ -325,15 +452,17 @@ function RecordingViewer({ recording, onClose }) {
             />
           ) : (
             <div className="rounded-lg bg-slate-50 p-6 text-center text-sm text-slate-400">
-              {recording.status === 'ready' ? <a className="text-brand-600 underline" href={recording.drive_link} target="_blank" rel="noreferrer">Open in Drive</a> : 'Processing…'}
+              {recording.status === 'ready'
+                ? <a className="text-brand-600 underline" href={recording.drive_link} target="_blank" rel="noreferrer">Open in Drive</a>
+                : 'Processing — this panel is live once the upload lands in Drive.'}
             </div>
           )}
-          <a className="btn-ghost mt-3 w-full" href={recording.drive_link} target="_blank" rel="noreferrer">Open in Google Drive ↗</a>
+          {recording.drive_link && <a className="btn-ghost mt-3 w-full" href={recording.drive_link} target="_blank" rel="noreferrer">Open in Google Drive ↗</a>}
         </div>
         <div>
           <p className="label">{script ? script.title : 'Script'}</p>
           <pre className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap rounded-lg bg-slate-900 p-4 text-[13px] leading-relaxed text-slate-100">
-            {script ? script.content : 'No script set for this type yet — add one under Scripts.'}
+            {scriptError ? scriptError : script ? script.content : 'No script set for this type yet — add one under Scripts.'}
           </pre>
         </div>
       </div>
@@ -344,13 +473,19 @@ function RecordingViewer({ recording, onClose }) {
 // ── documents ─────────────────────────────────────────────────
 function DocumentsCard({ docs, requests }) {
   const toast = useToast()
-  const download = async (d) => {
-    try { const { url } = await api(`/documents/${d.id}/url`); window.open(url, '_blank') } catch (e) { toast(e.message, 'error') }
-  }
+  const [downloadingId, setDownloadingId] = useState(null)
+  const { run: download } = useAction(async (d) => {
+    setDownloadingId(d.id)
+    const { url } = await api(`/documents/${d.id}/url`)
+    window.open(url, '_blank')
+  }, { toast, onDone: () => setDownloadingId(null) })
+
   const copyLink = (r) => {
     navigator.clipboard.writeText(`${window.location.origin}/upload/${r.token}`)
-    toast('Secure link copied — send it to the claimant')
+      .then(() => toast('Secure link copied — send it to the claimant'))
+      .catch(() => toast('Couldn’t access the clipboard — copy the URL from the browser bar instead.', 'error'))
   }
+
   return (
     <div className="card p-5">
       <h2 className="mb-3 text-sm font-semibold text-slate-700">Documents</h2>
@@ -379,10 +514,12 @@ function DocumentsCard({ docs, requests }) {
             <div key={d.id} className="flex items-center gap-3 py-2.5">
               <FileText size={16} className="text-slate-400" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-slate-700">{d.doc_type} — {d.file_name}</p>
+                <p className="truncate text-sm text-slate-700">{d.doc_type || 'Document'} — {d.file_name}</p>
                 <p className="text-[11px] text-slate-400">{fmtDateTime(d.uploaded_at)}{d.size_bytes ? ` · ${(d.size_bytes / 1024 / 1024).toFixed(1)} MB` : ''}</p>
               </div>
-              <button className="btn-ghost !px-2.5 !py-1.5 text-xs" onClick={() => download(d)}><Download size={13} /> View</button>
+              <button className="btn-ghost !px-2.5 !py-1.5 text-xs" onClick={() => download(d)} disabled={downloadingId === d.id}>
+                {downloadingId === d.id ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} View
+              </button>
             </div>
           ))}
         </div>
@@ -461,12 +598,19 @@ function EmailModal({ open, onClose, lead, onSent }) {
     if (t) { setSubject(t.subject || ''); setBody(t.body || '') }
   }
   const send = async () => {
+    if (busy) return
+    if (!subject.trim() || !body.trim()) { toast('Add a subject and a body before sending.', 'error'); return }
     setBusy(true)
     try {
-      await api(`/leads/${lead.id}/email`, { method: 'POST', body: { subject, body, purpose } })
+      await api(`/leads/${lead.id}/email`, { method: 'POST', body: { subject: sanitizeText(subject, 300), body, purpose } })
       toast('Email sent 📬 (opens are tracked automatically)')
-      onSent(); onClose()
-    } catch (e) { toast(e.message, 'error') } finally { setBusy(false) }
+      onSent()
+      onClose()
+    } catch (e) {
+      toast(describeError(e), 'error')
+    } finally {
+      setBusy(false)
+    }
   }
   return (
     <Modal open={open} onClose={onClose} title={`Email ${lead.first_name} (${lead.email || 'no email'})`} wide>
@@ -493,7 +637,9 @@ function EmailModal({ open, onClose, lead, onSent }) {
         </div>
         <div className="flex justify-end gap-2">
           <button className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" onClick={send} disabled={busy || !subject || !body}><Send size={14} /> {busy ? 'Sending…' : 'Send & track'}</button>
+          <button className="btn-primary" onClick={send} disabled={busy || !subject.trim() || !body.trim()}>
+            <Send size={14} /> {busy ? 'Sending…' : 'Send & track'}
+          </button>
         </div>
       </div>
     </Modal>
@@ -510,20 +656,30 @@ function DocRequestModal({ open, onClose, lead, onDone }) {
 
   const toggle = (t) => setTypes((ts) => (ts.includes(t) ? ts.filter((x) => x !== t) : [...ts, t]))
   const create = async () => {
+    if (busy) return
     setBusy(true)
     try {
-      const d = await api(`/leads/${lead.id}/doc-request`, { method: 'POST', body: { doc_types: types, message, expires_days: days } })
+      const d = await api(`/leads/${lead.id}/doc-request`, {
+        method: 'POST',
+        body: { doc_types: types, message: sanitizeText(message, 1000), expires_days: Math.min(60, Math.max(1, Number(days) || 7)) },
+      })
       setLink(d.url)
       onDone()
-    } catch (e) { toast(e.message, 'error') } finally { setBusy(false) }
+    } catch (e) {
+      toast(describeError(e), 'error')
+    } finally {
+      setBusy(false)
+    }
   }
   return (
     <Modal open={open} onClose={onClose} title="Request documents (secure link)">
       {link ? (
         <div className="space-y-4">
-          <div className="rounded-lg bg-emerald-50 p-4 text-sm text-emerald-700">Secure link created! Send it to {lead.first_name} by email or text.</div>
+          <div className="rounded-lg bg-emerald-50 p-4 text-sm text-emerald-700">Secure link created! Send it to {lead.first_name || 'the claimant'} by email or text.</div>
           <div className="break-all rounded-lg bg-slate-900 p-3 font-mono text-xs text-emerald-300">{link}</div>
-          <button className="btn-primary w-full" onClick={() => { navigator.clipboard.writeText(link); toast('Link copied to clipboard') }}><Copy size={14} /> Copy secure link</button>
+          <button className="btn-primary w-full" onClick={() => { navigator.clipboard.writeText(link).then(() => toast('Link copied to clipboard')).catch(() => toast('Couldn’t access the clipboard — select the link text and copy manually.', 'error')) }}>
+            <Copy size={14} /> Copy secure link
+          </button>
           <button className="btn-ghost w-full" onClick={() => { onClose(); setLink('') }}>Done</button>
         </div>
       ) : (
@@ -551,14 +707,14 @@ function DocRequestModal({ open, onClose, lead, onDone }) {
   )
 }
 
-function QuickTask({ onAdd }) {
+function QuickTask({ onAdd, busy }) {
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [due, setDue] = useState('')
   const [type, setType] = useState('callback')
   const submit = () => {
-    if (!title.trim()) return
-    onAdd(title.trim(), due ? new Date(due).toISOString() : null, type)
+    if (busy || !title.trim()) return
+    onAdd(title.trim(), due, type)
     setTitle(''); setDue(''); setOpen(false)
   }
   return (
@@ -573,7 +729,7 @@ function QuickTask({ onAdd }) {
             </select>
             <input className="input" type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} />
           </div>
-          <button className="btn-primary w-full !py-1.5 text-xs" onClick={submit}>Add task</button>
+          <button className="btn-primary w-full !py-1.5 text-xs" onClick={submit} disabled={busy || !title.trim()}>{busy ? 'Adding…' : 'Add task'}</button>
         </div>
       )}
     </div>

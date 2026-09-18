@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Zap, HardDrive, Copy, RefreshCw, CheckCircle2, XCircle } from 'lucide-react'
-import { api } from '../api'
+import { Zap, HardDrive, Copy, RefreshCw, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import { api, describeError } from '../api'
+import { useAction } from '../lib/hooks'
 import { useToast, Spinner } from '../ui'
 
 export default function Integrations() {
@@ -37,17 +38,28 @@ function MetaCard() {
       await api('/meta/settings', { method: 'PUT', body })
       toast('Meta settings saved')
       load()
-    } catch (e) { toast(e.message, 'error') } finally { setBusy(false) }
+    } catch (e) { toast(describeError(e), 'error') } finally { setBusy(false) }
   }
-  const test = async () => {
-    setTestResult(null)
-    const r = await api('/meta/test', { method: 'POST' }).catch((e) => ({ error: e.message }))
+  // CAPI test event + manual backfill — both single-flight with busy feedback
+  const { run: test, busy: testing } = useAction(async () => {
+    const r = await api('/meta/test', { method: 'POST' })
     setTestResult(r)
-  }
-  const sync = async () => {
+    if (r?.success) return 'Test event delivered — check Events Manager.'
+    if (r?.skipped) throw new Error('Meta isn’t configured yet — save a Pixel ID and CAPI token first.')
+    throw new Error('Meta rejected the test event — double-check the Pixel ID and token. See the response below.')
+  }, { toast })
+
+  const { run: sync, busy: syncing } = useAction(async () => {
     setSyncResult('syncing')
-    try { const r = await api('/meta/sync', { method: 'POST' }); setSyncResult(r) } catch (e) { setSyncResult({ error: e.message }) }
-  }
+    try {
+      const r = await api('/meta/sync', { method: 'POST' })
+      setSyncResult(r)
+      return `Sync done — ${r.processed} imported, ${r.skipped} already in CRM`
+    } catch (e) {
+      setSyncResult({ error: e.message })
+      throw e
+    }
+  }, { toast })
   const Dot = ({ ok, label }) => (
     <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${ok ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
       {ok ? <CheckCircle2 size={13} /> : <XCircle size={13} />} {label}
@@ -89,8 +101,8 @@ function MetaCard() {
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <button className="btn-primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save settings'}</button>
-        <button className="btn-ghost" onClick={test}>Send CAPI test event</button>
-        <button className="btn-ghost" onClick={sync}><RefreshCw size={14} /> Sync existing form leads</button>
+        <button className="btn-ghost" onClick={test} disabled={testing}>{testing ? <Loader2 size={14} className="animate-spin" /> : null} Send CAPI test event</button>
+        <button className="btn-ghost" onClick={sync} disabled={syncing}>{syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Sync existing form leads</button>
       </div>
       {testResult && (
         <pre className="mt-3 max-h-32 overflow-auto rounded-lg bg-slate-900 p-3 text-[11px] text-slate-200">{JSON.stringify(testResult, null, 2)}</pre>

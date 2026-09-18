@@ -1,32 +1,39 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Headphones, FileText, UploadCloud, CheckCircle2, ShieldCheck, Loader2 } from 'lucide-react'
-import { api, uploadToSignedUrl } from '../api'
+import { api, describeError, uploadToSignedUrl } from '../api'
 import { fmtDateTime } from '../ui'
 
 export default function ClaimantUpload() {
   const { token } = useParams()
   const [info, setInfo] = useState(null)
   const [error, setError] = useState(null)
-  const [uploads, setUploads] = useState({}) // docType -> {status: 'uploading'|'done', name}
-  const [busy, setBusy] = useState(false)
+  const [uploads, setUploads] = useState({}) // docType -> {status: 'uploading'|'done'|'error', name, error}
+  const [loading, setLoading] = useState(true)
 
-  const load = () => api(`/doc/${token}`).then(setInfo).catch((e) => setError(e.message))
-  useEffect(() => { load() }, [token])
+  const load = () => api(`/doc/${token}`)
+    .then((d) => { setInfo(d); setError(null) })
+    .catch((e) => setError(describeError(e)))
+    .finally(() => setLoading(false))
+  useEffect(() => { load() }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const upload = async (docType, file) => {
+    if (uploads[docType]?.status === 'uploading') return // already in flight
     setUploads((u) => ({ ...u, [docType]: { status: 'uploading', name: file.name } }))
     try {
-      const { signed_url, path } = await api(`/doc/${token}/upload-url`, { method: 'POST', body: { file_name: file.name, doc_type: docType } })
+      const { signed_url, path } = await api(`/doc/${token}/upload-url`, { method: 'POST', body: { file_name: file.name, doc_type: docType, size: file.size } })
       await uploadToSignedUrl(signed_url, file)
       await api(`/doc/${token}/confirm`, { method: 'POST', body: { path, doc_type: docType, file_name: file.name, size: file.size } })
       setUploads((u) => ({ ...u, [docType]: { status: 'done', name: file.name } }))
       load()
     } catch (e) {
-      setUploads((u) => ({ ...u, [docType]: { status: 'error', name: file.name, error: e.message } }))
+      setUploads((u) => ({ ...u, [docType]: { status: 'error', name: file.name, error: describeError(e) } }))
     }
   }
 
+  if (loading && !error) {
+    return <Shell><div className="py-10 text-center text-slate-400">Loading…</div></Shell>
+  }
   if (error) {
     return (
       <Shell>

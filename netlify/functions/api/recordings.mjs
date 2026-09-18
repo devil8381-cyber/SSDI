@@ -35,6 +35,12 @@ route('POST', 'recordings/confirm', async ({ req, body, context }) => {
   if (!s) return unauthorized()
   const { data: row } = await service.from('recordings').select('*').eq('id', body.recording_id).single()
   if (!row) return fail('Recording not found', 404)
+  // Ownership: only the uploader or the lead's assigned agent (or an admin)
+  // may trigger the Drive transfer.
+  if (!isAdmin(s.profile)) {
+    const { data: lead } = await service.from('leads').select('assigned_to').eq('id', row.lead_id).single()
+    if (row.uploaded_by !== s.user.id && lead?.assigned_to !== s.user.id) return unauthorized()
+  }
   await service.from('recordings').update({ status: 'processing' }).eq('id', row.id)
   context.waitUntil(transferToDrive(row))
   return json({ ok: true, status: 'processing' })
