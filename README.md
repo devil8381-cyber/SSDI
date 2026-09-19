@@ -98,6 +98,17 @@ cp .env.example .env      # fill in the values
 npx netlify-cli dev       # runs vite + functions together on :8888
 ```
 
+### Demo data (optional)
+
+Once the Supabase keys are in `.env`, load a full demo dataset — 60 realistic SSDI leads spread across all dispositions, 4 demo logins (1 admin + 3 agents), activity timelines, email history with tracked opens, tasks, an uploaded demo PDF, Meta quality signals, and active-time stats:
+
+```bash
+npm run seed:demo          # skips if already seeded
+npm run seed:demo -- --force   # wipe demo data and reseed
+```
+
+Demo logins: `admin@demo.com` / `admin123` · `sarah@demo.com`, `mike@demo.com`, `rachel@demo.com` / `agent123`
+
 ---
 
 ## Notes & gotchas

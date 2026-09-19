@@ -14,7 +14,6 @@
         "npm:@supabase/supabase-js@^2.45.4",
         "npm:@vitejs/plugin-react@^4.3.1",
         "npm:autoprefixer@^10.4.20",
-        "npm:googleapis@144",
         "npm:lucide-react@0.441",
         "npm:nodemailer@^6.9.14",
         "npm:papaparse@^5.4.1",
