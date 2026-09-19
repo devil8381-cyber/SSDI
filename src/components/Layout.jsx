@@ -8,7 +8,7 @@ import { api } from '../api'
 import { useAuth } from '../auth'
 import { useOnline, useDebounced } from '../lib/hooks'
 import { setCallConfig } from '../lib/call'
-import { fmtDateTime, leadName, DispositionBadge } from '../ui'
+import { fmtDateTime, leadName, DispositionBadge, useToast } from '../ui'
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -30,10 +30,19 @@ export default function Layout({ children }) {
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
   const online = useOnline()
+  const toast = useToast()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [notifs, setNotifs] = useState([])
   const [notifOpen, setNotifOpen] = useState(false)
   const bellRef = useRef(null)
+
+  // Explain background-tab reloads: the CRM never reloads itself — when this
+  // fires, the BROWSER discarded the tab (memory saver) and reloaded it.
+  useEffect(() => {
+    const onReloaded = () => toast("Your browser reloaded this tab while it was in the background (memory saver) — you're back where you were.")
+    window.addEventListener('aba:browser-reload', onReloaded)
+    return () => window.removeEventListener('aba:browser-reload', onReloaded)
+  }, [toast])
 
   // click-to-call config (which app opens on phone-number clicks)
   useEffect(() => {

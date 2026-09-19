@@ -7,7 +7,7 @@ import { api, describeError } from '../api'
 export default function Login() {
   const { signIn } = useAuth()
   const navigate = useNavigate()
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(() => localStorage.getItem('aba_email') || '')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const [err, setErr] = useState('')
@@ -42,6 +42,7 @@ export default function Login() {
       } else {
         await signIn(email, password)
       }
+      localStorage.setItem('aba_email', email) // remember for instant recovery if a session ever bounces
       // Explicit entry into the app (belt-and-braces with the /login guard)
       navigate('/', { replace: true })
     } catch (ex) {

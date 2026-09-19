@@ -27,6 +27,26 @@ function reportCrash(kind, err) {
 window.addEventListener('error', (e) => reportCrash('error', e.error || { message: e.message }))
 window.addEventListener('unhandledrejection', (e) => reportCrash('rejection', e.reason))
 
+// Background-reload detector. The CRM itself never reloads (audited: zero
+// automatic reload paths, navigation is client-side) — but Chrome "discards"
+// background tabs under memory pressure and reloads them on return. Detect
+// that exact case, explain it to the user, and report it so support sees it.
+window.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') sessionStorage.setItem('aba_was_hidden', String(Date.now()))
+})
+window.addEventListener('load', () => {
+  try {
+    const nav = performance.getEntriesByType('navigation')[0]
+    if (nav?.type === 'reload' && sessionStorage.getItem('aba_was_hidden')) {
+      sessionStorage.removeItem('aba_was_hidden')
+      const n = Number(sessionStorage.getItem('aba_bg_reloads') || 0) + 1
+      sessionStorage.setItem('aba_bg_reloads', String(n))
+      reportCrash('background-reload', { message: `Browser discarded & reloaded the background tab (occurrence #${n})` })
+      window.dispatchEvent(new CustomEvent('aba:browser-reload', { detail: n }))
+    }
+  } catch {}
+})
+
 // Dev-server watchdog: when the dev server dies mid-session, HMR stops
 // updating the page silently and the tab keeps running outdated code —
 // which surfaces later as confusing crashes. Make that state visible.

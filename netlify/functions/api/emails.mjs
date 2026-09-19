@@ -27,7 +27,8 @@ route('POST', 'leads/:id/email', async ({ req, params, body, url }) => {
     await logActivity(lead.id, s.user.id, 'email_sent', `✉️ Email sent: ${body.subject}`, { purpose: body.purpose })
     return json({ ok: true, id: info.id, smtp: info.profile })
   } catch (e) {
-    return fail(e.message, 500)
+    // Config/SMTP errors are the sender's to fix — 400, not a server fault.
+    return fail(e.message, 400)
   }
 })
 

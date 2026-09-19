@@ -437,7 +437,12 @@ export async function maybeSendWelcomeEmail(lead, agentId) {
     await sendSystemEmail({ to: lead.email, subject, html: body })
     await service.from('activities').insert({ lead_id: lead.id, user_id: null, type: 'welcome', title: `✉️ Welcome email sent (agent: ${vars.agent_name})`, detail: { agent_id: agentId } })
   } catch (e) {
+    // Never silent: the admin/agents must see WHY no email went out.
     console.error('welcome email failed:', e.message)
+    try {
+      await service.from('activities').insert({ lead_id: lead.id, user_id: null, type: 'welcome', title: `⚠️ Welcome email FAILED: ${String(e.message).slice(0, 200)}`, detail: { agent_id: agentId, error: String(e.message).slice(0, 500) } })
+      await notify(await adminIds(), 'Welcome email failed', String(e.message).slice(0, 200))
+    } catch {}
   }
 }
 
