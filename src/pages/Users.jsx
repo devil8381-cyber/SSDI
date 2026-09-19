@@ -42,7 +42,7 @@ export default function Users() {
   return (
     <div className="mx-auto max-w-5xl space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-slate-800">Users</h1>
+        <h1 className="text-xl font-bold text-slate-100">Users</h1>
         <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus size={15} /> Create user</button>
       </div>
 
@@ -53,29 +53,29 @@ export default function Users() {
           : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-slate-50">
+              <thead className="bg-slate-800/70">
                 <tr>
                   <th className="th">User</th><th className="th">Role</th><th className="th">Leads / Capacity</th>
                   <th className="th">Active today</th><th className="th">Last seen</th><th className="th">Status</th><th className="th"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-800">
                 {users.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-50/60">
+                  <tr key={u.id} className="hover:bg-slate-800/70/60">
                     <td className="td">
-                      <p className="font-medium text-slate-800">{u.name} {u.id === profile.id && <span className="text-xs text-slate-400">(you)</span>}</p>
+                      <p className="font-medium text-slate-100">{u.name} {u.id === profile.id && <span className="text-xs text-slate-400">(you)</span>}</p>
                       <p className="text-xs text-slate-400">{u.email}</p>
                     </td>
                     <td className="td">
-                      <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${u.role === 'admin' ? 'bg-brand-100 text-brand-700' : 'bg-slate-100 text-slate-600'}`}>
+                      <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${u.role === 'admin' ? 'bg-brand-500/20 text-brand-300' : 'bg-slate-800 text-slate-300'}`}>
                         {u.role === 'admin' && <ShieldCheck size={12} />} {u.role}
                       </span>
                     </td>
                     <td className="td">{u.leadCount ?? 0}{u.max_leads ? ` / ${u.max_leads}` : ''}{u.phone ? <p className="text-xs text-slate-400">{u.phone}</p> : null}</td>
                     <td className="td">{fmtDuration(u.activeToday)}</td>
-                    <td className="td text-slate-500">{u.last_active_at ? fmtDateTime(u.last_active_at) : 'never'}</td>
+                    <td className="td text-slate-400">{u.last_active_at ? fmtDateTime(u.last_active_at) : 'never'}</td>
                     <td className="td">
-                      <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${u.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-600'}`}>
+                      <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${u.is_active ? 'bg-emerald-500/10 text-emerald-300' : 'bg-rose-500/10 text-rose-400'}`}>
                         {u.is_active ? 'Active' : 'Disabled'}
                       </span>
                     </td>
@@ -85,7 +85,7 @@ export default function Users() {
                         <button className="btn-ghost !px-2 !py-1.5 text-xs" onClick={() => setPwFor(u)} title="Reset password"><KeyRound size={13} /></button>
                         {u.id !== profile.id && (
                           <button
-                            className={`btn-ghost !px-2 !py-1.5 text-xs ${u.is_active ? 'text-rose-600' : 'text-emerald-600'}`}
+                            className={`btn-ghost !px-2 !py-1.5 text-xs ${u.is_active ? 'text-rose-400' : 'text-emerald-400'}`}
                             onClick={() => toggleActive(u)}
                             disabled={(toggling && busyId === u.id) || u.id === profile.id}
                           >
@@ -150,17 +150,17 @@ function AddUser({ open, onClose, onDone }) {
   return (
     <Modal open={open} onClose={onClose} title="Create user">
       <div className="space-y-3">
-        {formErr && <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{formErr}</p>}
+        {formErr && <p className="rounded-lg bg-rose-500/10 p-3 text-sm text-rose-300">{formErr}</p>}
         <div><label className="label">Full name</label><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
         <div>
           <label className="label">Email *</label>
           <input className={`input ${errors.email ? '!border-rose-400' : ''}`} type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
-          {errors.email && <p className="mt-1 text-xs text-rose-600">{errors.email}</p>}
+          {errors.email && <p className="mt-1 text-xs text-rose-400">{errors.email}</p>}
         </div>
         <div>
           <label className="label">Password * (share it with them securely)</label>
           <input className={`input ${errors.password ? '!border-rose-400' : ''}`} value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} placeholder="min 6 characters" />
-          {errors.password && <p className="mt-1 text-xs text-rose-600">{errors.password}</p>}
+          {errors.password && <p className="mt-1 text-xs text-rose-400">{errors.password}</p>}
         </div>
         <div><label className="label">Role</label>
           <select className="input" value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>
@@ -170,7 +170,7 @@ function AddUser({ open, onClose, onDone }) {
         <div>
           <label className="label">Phone (shown in welcome emails)</label>
           <input className={`input ${errors.phone ? '!border-rose-400' : ''}`} value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} placeholder="(555) 555-0100" />
-          {errors.phone && <p className="mt-1 text-xs text-rose-600">{errors.phone}</p>}
+          {errors.phone && <p className="mt-1 text-xs text-rose-400">{errors.phone}</p>}
         </div>
         <div><label className="label">Lead capacity (blank = unlimited)</label>
           <input className="input w-40" type="number" min="0" value={f.max_leads} onChange={(e) => setF({ ...f, max_leads: e.target.value })} placeholder="e.g. 150" />
@@ -255,7 +255,7 @@ function ResetPassword({ user, onClose }) {
   return (
     <Modal open={!!user} onClose={onClose} title={`Reset password — ${user?.name || ''}`}>
       <div className="space-y-3">
-        {err && <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{err}</p>}
+        {err && <p className="rounded-lg bg-rose-500/10 p-3 text-sm text-rose-300">{err}</p>}
         <div><label className="label">New password</label><input className="input" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="min 6 characters" autoFocus /></div>
         <div className="flex justify-end gap-2">
           <button className="btn-ghost" onClick={onClose}>Cancel</button>

@@ -64,7 +64,7 @@ export default function Login() {
           <p className="mt-1 text-sm text-slate-400">Social Security Disability case management</p>
         </div>
         {checked && !dbReady && (
-          <div className="mb-4 rounded-xl border border-rose-400/40 bg-rose-500/10 p-3 text-xs leading-relaxed text-rose-200">
+          <div className="mb-4 rounded-xl border border-rose-400/40 bg-rose-500/100/10 p-3 text-xs leading-relaxed text-rose-200">
             <b>Database not connected.</b> Sign-in is disabled because the server has no Supabase keys yet.
             <br />Local dev: paste <code>SUPABASE_URL</code>, <code>SUPABASE_ANON_KEY</code>, <code>SUPABASE_SERVICE_ROLE_KEY</code> + the two <code>VITE_</code> keys into <code>.env</code>, then restart the dev server.
             <br />Production: set the same keys under Netlify → Site settings → Environment variables and redeploy.
@@ -78,11 +78,11 @@ export default function Login() {
         )}
         <form onSubmit={submit} className="card space-y-4 rounded-2xl p-6">
           {err && (
-            <div className="flex items-start gap-2 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">
+            <div className="flex items-start gap-2 rounded-lg bg-rose-500/10 p-3 text-sm text-rose-300">
               <AlertCircle size={16} className="mt-0.5 shrink-0" /> {err}
             </div>
           )}
-          {okMsg && <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{okMsg}</div>}
+          {okMsg && <div className="rounded-lg bg-emerald-500/10 p-3 text-sm text-emerald-300">{okMsg}</div>}
           {firstRun && (
             <div>
               <label className="label">Your name</label>

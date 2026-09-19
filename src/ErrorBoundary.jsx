@@ -21,13 +21,13 @@ export default class ErrorBoundary extends Component {
   render() {
     if (!this.state.error) return this.props.children
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
+      <div className="flex min-h-screen items-center justify-center bg-slate-800 p-6">
         <div className="card max-w-md p-8 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-rose-500/10 text-rose-400">
             <AlertTriangle size={22} />
           </div>
-          <h1 className="text-lg font-bold text-slate-800">Something went wrong</h1>
-          <p className="mt-2 text-sm text-slate-500">
+          <h1 className="text-lg font-bold text-slate-100">Something went wrong</h1>
+          <p className="mt-2 text-sm text-slate-400">
             The page hit an unexpected error. Reloading usually fixes it — your data is saved on our servers.
           </p>
           <div className="mt-5 flex justify-center gap-2">

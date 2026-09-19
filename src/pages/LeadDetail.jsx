@@ -223,7 +223,7 @@ export default function LeadDetail() {
   if (loadError) {
     return (
       <div className="mx-auto max-w-3xl pt-10">
-        <button onClick={() => navigate('/leads')} className="mb-4 flex items-center gap-1 text-xs text-slate-400 hover:text-brand-600"><ArrowLeft size={13} /> Back to leads</button>
+        <button onClick={() => navigate('/leads')} className="mb-4 flex items-center gap-1 text-xs text-slate-400 hover:text-brand-400"><ArrowLeft size={13} /> Back to leads</button>
         <PageError message={loadError} onRetry={load} />
       </div>
     )
@@ -237,29 +237,29 @@ export default function LeadDetail() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="mb-1 flex items-center gap-2">
-            <button onClick={() => navigate('/leads')} className="flex items-center gap-1 text-xs text-slate-400 hover:text-brand-600"><ArrowLeft size={13} /> Back to leads</button>
+            <button onClick={() => navigate('/leads')} className="flex items-center gap-1 text-xs text-slate-400 hover:text-brand-400"><ArrowLeft size={13} /> Back to leads</button>
             {neighbors && neighbors.total > 0 && (
               <span className="flex items-center gap-1 text-xs text-slate-400">
                 <button
                   disabled={!neighbors.prev}
                   onClick={() => neighbors.prev && navigate(`/leads/${neighbors.prev}`)}
-                  className="rounded p-1 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30" title="Previous lead (newest → oldest)"
+                  className="rounded p-1 hover:bg-slate-800 hover:text-brand-400 disabled:opacity-30" title="Previous lead (newest → oldest)"
                 ><ArrowRight size={12} className="rotate-180" /></button>
                 <span className="tabular-nums">{neighbors.position} / {neighbors.total}</span>
                 <button
                   disabled={!neighbors.next}
                   onClick={() => neighbors.next && navigate(`/leads/${neighbors.next}`)}
-                  className="rounded p-1 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30" title="Next lead"
+                  className="rounded p-1 hover:bg-slate-800 hover:text-brand-400 disabled:opacity-30" title="Next lead"
                 ><ArrowRight size={12} /></button>
               </span>
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-xl font-bold text-slate-800">{lead.first_name} {lead.last_name}</h1>
+            <h1 className="text-xl font-bold text-slate-100">{lead.first_name} {lead.last_name}</h1>
             <DispositionBadge value={lead.disposition} />
             {lead.disposition_reason ? <span className="text-xs text-slate-400">Reason: {lead.disposition_reason}</span> : null}
           </div>
-          <p className="mt-0.5 text-sm text-slate-500">
+          <p className="mt-0.5 text-sm text-slate-400">
             {lead.phone || 'no phone'} · {lead.email || 'no email'} · {ageFrom(lead.dob) ?? '?'} yrs · {lead.city || lead.state || '—'} · <span className="capitalize">{lead.source}</span>{lead.form_name ? ` · ${lead.form_name}` : ''}
           </p>
         </div>
@@ -268,7 +268,7 @@ export default function LeadDetail() {
             <a
               href={getCallHref(lead.phone) || '#'}
               onClick={() => logCall()}
-              className="btn-ghost !border-emerald-200 !text-emerald-700 hover:!bg-emerald-50"
+              className="btn-ghost !border-emerald-500/30 !text-emerald-300 hover:!bg-emerald-500/10"
               title="Opens your dialer / softphone and logs the call in the timeline"
             ><Phone size={15} /> Call</a>
           )}
@@ -282,7 +282,7 @@ export default function LeadDetail() {
 
       {/* dirty indicator — the agent always knows when there are unsaved edits */}
       {dirty && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-200">
           <span>✏️ You have unsaved changes to this lead.</span>
           <button className="btn-primary !py-1.5" onClick={saveInfo} disabled={saving}>{saving ? 'Saving…' : 'Save now'}</button>
         </div>
@@ -323,7 +323,7 @@ export default function LeadDetail() {
           </>
         )}
         {lead.next_followup_at && (
-          <span className="ml-auto flex items-center gap-1.5 rounded-lg bg-brand-50 px-2.5 py-1.5 text-xs text-brand-700"><Clock size={13} /> Follow-up: {fmtDateTime(lead.next_followup_at)}</span>
+          <span className="ml-auto flex items-center gap-1.5 rounded-lg bg-brand-500/10 px-2.5 py-1.5 text-xs text-brand-300"><Clock size={13} /> Follow-up: {fmtDateTime(lead.next_followup_at)}</span>
         )}
       </div>
 
@@ -339,19 +339,19 @@ export default function LeadDetail() {
           <DocumentsCard docs={data.documents} requests={data.docRequests} />
 
           <div className="card overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-              <h2 className="text-sm font-semibold text-slate-700">Tasks</h2>
+            <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3">
+              <h2 className="text-sm font-semibold text-slate-200">Tasks</h2>
               <QuickTask onAdd={addTask} busy={addingTask} />
             </div>
             {data.tasks.length === 0 ? <Empty title="No tasks for this lead" /> : (
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-slate-800">
                 {data.tasks.map((t) => (
                   <div key={t.id} className="flex items-center gap-3 px-5 py-2.5">
                     <button onClick={() => completeTask(t)} disabled={completingTask} className="text-slate-300 hover:text-emerald-500 disabled:opacity-40">
                       {t.status === 'open' ? <Circle size={17} /> : <CheckCircle2 size={17} className="text-emerald-500" />}
                     </button>
                     <div className="min-w-0 flex-1">
-                      <p className={`truncate text-sm ${t.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{t.title}</p>
+                      <p className={`truncate text-sm ${t.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-200'}`}>{t.title}</p>
                       <p className="text-[11px] text-slate-400">{t.type}{t.due_at ? ` · due ${fmtDateTime(t.due_at)}` : ''} · {t.profiles?.name || 'unassigned'}</p>
                     </div>
                   </div>
@@ -393,12 +393,12 @@ export default function LeadDetail() {
           <Timeline activities={data.activities} />
           {data.metaEvents.length > 0 && (
             <div className="card p-5">
-              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700"><Zap size={15} className="text-amber-500" /> Meta signals</h2>
+              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-200"><Zap size={15} className="text-amber-500" /> Meta signals</h2>
               <div className="space-y-2">
                 {data.metaEvents.map((m) => (
-                  <div key={m.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
-                    <span className="text-slate-700">{m.event_name}</span>
-                    <span className={`text-xs font-medium ${m.success ? 'text-emerald-600' : 'text-rose-500'}`}>{m.success ? 'sent ✓' : 'failed'}</span>
+                  <div key={m.id} className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2 text-sm">
+                    <span className="text-slate-200">{m.event_name}</span>
+                    <span className={`text-xs font-medium ${m.success ? 'text-emerald-400' : 'text-rose-500'}`}>{m.success ? 'sent ✓' : 'failed'}</span>
                   </div>
                 ))}
               </div>
@@ -417,20 +417,20 @@ export default function LeadDetail() {
 // ── editable lead info ────────────────────────────────────────
 function InfoCard({ form, set, saveInfo, saving }) {
   const boolRow = (k, label) => (
-    <label className="flex items-center gap-2.5 rounded-lg border border-slate-200 px-3 py-2.5 text-sm">
+    <label className="flex items-center gap-2.5 rounded-lg border border-slate-700 px-3 py-2.5 text-sm">
       <input
         type="checkbox"
         checked={!!form[k]}
         onChange={(e) => set(k)({ target: { value: e.target.checked } })}
-        className="h-4 w-4 rounded border-slate-300"
+        className="h-4 w-4 rounded border-slate-600"
       />
-      <span className="text-slate-600">{label}</span>
+      <span className="text-slate-300">{label}</span>
     </label>
   )
   return (
     <div className="card p-5">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-700">Lead details</h2>
+        <h2 className="text-sm font-semibold text-slate-200">Lead details</h2>
         <button className="btn-primary" onClick={saveInfo} disabled={saving}>
           {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {saving ? 'Saving…' : 'Save'}
         </button>
@@ -501,10 +501,10 @@ function RecordingsCard({ recordings, onOpen, onChange, leadId }) {
     const rec = recordings.find((r) => r.type === type)
     const label = type === 'frontend' ? 'Front-end recording' : 'Verification recording'
     return (
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3">
-        <Mic size={17} className={rec ? 'text-brand-600' : 'text-slate-300'} />
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-800 bg-slate-800/70/60 px-4 py-3">
+        <Mic size={17} className={rec ? 'text-brand-400' : 'text-slate-300'} />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-slate-700">{label}</p>
+          <p className="text-sm font-medium text-slate-200">{label}</p>
           <p className="text-xs text-slate-400">
             {!rec ? 'Not uploaded yet'
               : rec.status === 'ready' ? rec.file_name
@@ -519,7 +519,7 @@ function RecordingsCard({ recordings, onOpen, onChange, leadId }) {
         ) : rec.status === 'ready' ? (
           <button className="btn-primary" onClick={() => onOpen(rec)}><Play size={14} /> Open + script</button>
         ) : (
-          <span className="flex items-center gap-1.5 text-xs text-amber-600"><Loader2 size={13} className="animate-spin" /> {rec.status}…</span>
+          <span className="flex items-center gap-1.5 text-xs text-amber-400"><Loader2 size={13} className="animate-spin" /> {rec.status}…</span>
         )}
       </div>
     )
@@ -527,7 +527,7 @@ function RecordingsCard({ recordings, onOpen, onChange, leadId }) {
   return (
     <div className="card p-5">
       <input ref={fileRef} type="file" accept="audio/*,video/*" className="hidden" onChange={onFile} />
-      <h2 className="mb-3 text-sm font-semibold text-slate-700">Call recordings (auto-saved to Google Drive)</h2>
+      <h2 className="mb-3 text-sm font-semibold text-slate-200">Call recordings (auto-saved to Google Drive)</h2>
       <div className="space-y-2">
         <Row type="frontend" />
         <Row type="verification" />
@@ -565,13 +565,13 @@ function RecordingViewer({ recording, onClose }) {
             <iframe
               title="recording"
               src={`https://drive.google.com/file/d/${recording.drive_file_id}/preview`}
-              className="aspect-video w-full rounded-lg border border-slate-200"
+              className="aspect-video w-full rounded-lg border border-slate-700"
               allow="autoplay"
             />
           ) : (
-            <div className="rounded-lg bg-slate-50 p-6 text-center text-sm text-slate-400">
+            <div className="rounded-lg bg-slate-800/70 p-6 text-center text-sm text-slate-400">
               {recording.status === 'ready'
-                ? <a className="text-brand-600 underline" href={recording.drive_link} target="_blank" rel="noreferrer">Open in Drive</a>
+                ? <a className="text-brand-400 underline" href={recording.drive_link} target="_blank" rel="noreferrer">Open in Drive</a>
                 : 'Processing — this panel is live once the upload lands in Drive.'}
             </div>
           )}
@@ -606,15 +606,15 @@ function DocumentsCard({ docs, requests }) {
 
   return (
     <div className="card p-5">
-      <h2 className="mb-3 text-sm font-semibold text-slate-700">Documents</h2>
+      <h2 className="mb-3 text-sm font-semibold text-slate-200">Documents</h2>
       {requests.length > 0 && (
         <div className="mb-4 space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Secure upload requests</p>
           {requests.map((r) => (
-            <div key={r.id} className="flex flex-wrap items-center gap-2.5 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2.5">
+            <div key={r.id} className="flex flex-wrap items-center gap-2.5 rounded-lg border border-slate-800 bg-slate-800/70/60 px-3 py-2.5">
               <FileText size={15} className="text-brand-500" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-slate-700">{(r.doc_types || []).join(', ') || 'Any documents'}</p>
+                <p className="truncate text-sm text-slate-200">{(r.doc_types || []).join(', ') || 'Any documents'}</p>
                 <p className="text-[11px] text-slate-400">
                   {r.status === 'uploaded' ? '✅ Uploaded' : `Pending — expires ${fmtDateTime(r.expires_at)}`}
                 </p>
@@ -627,12 +627,12 @@ function DocumentsCard({ docs, requests }) {
       {docs.length === 0 ? (
         <p className="py-2 text-center text-sm text-slate-400">No documents uploaded yet</p>
       ) : (
-        <div className="divide-y divide-slate-100">
+        <div className="divide-y divide-slate-800">
           {docs.map((d) => (
             <div key={d.id} className="flex items-center gap-3 py-2.5">
               <FileText size={16} className="text-slate-400" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-slate-700">{d.doc_type || 'Document'} — {d.file_name}</p>
+                <p className="truncate text-sm text-slate-200">{d.doc_type || 'Document'} — {d.file_name}</p>
                 <p className="text-[11px] text-slate-400">{fmtDateTime(d.uploaded_at)}{d.size_bytes ? ` · ${(d.size_bytes / 1024 / 1024).toFixed(1)} MB` : ''}</p>
               </div>
               <button className="btn-ghost !px-2.5 !py-1.5 text-xs" onClick={() => download(d)} disabled={downloadingId === d.id}>
@@ -651,17 +651,17 @@ const ACT_ICON = { email_sent: Send, email_opened: Mail, doc_requested: FileText
 function Timeline({ activities }) {
   return (
     <div className="card p-5">
-      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700"><Activity size={15} className="text-brand-600" /> Activity</h2>
+      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-200"><Activity size={15} className="text-brand-400" /> Activity</h2>
       {activities.length === 0 ? <Empty title="No activity yet" /> : (
-        <div className="relative space-y-4 border-l border-slate-200 pl-5">
+        <div className="relative space-y-4 border-l border-slate-700 pl-5">
           {activities.map((a) => {
             const Icon = ACT_ICON[a.type] || Activity
             return (
               <div key={a.id} className="relative">
-                <div className="absolute -left-[26.5px] top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-brand-100 text-brand-600">
+                <div className="absolute -left-[26.5px] top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-brand-500/20 text-brand-400">
                   <Icon size={10} />
                 </div>
-                <p className="text-sm text-slate-700">{a.title}</p>
+                <p className="text-sm text-slate-200">{a.title}</p>
                 <p className="text-[11px] text-slate-400">{a.profiles?.name || 'System'} · {fmtDateTime(a.created_at)}</p>
               </div>
             )
@@ -676,14 +676,14 @@ function Timeline({ activities }) {
 function EmailHistory({ emails }) {
   return (
     <div className="card p-5">
-      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700"><Mail size={15} className="text-brand-600" /> Email history</h2>
+      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-200"><Mail size={15} className="text-brand-400" /> Email history</h2>
       {emails.length === 0 ? <Empty title="No emails sent yet" /> : (
         <div className="space-y-2">
           {emails.map((m) => (
-            <div key={m.id} className="rounded-lg border border-slate-100 px-3 py-2.5">
+            <div key={m.id} className="rounded-lg border border-slate-800 px-3 py-2.5">
               <div className="flex items-center justify-between gap-2">
-                <p className="truncate text-sm font-medium text-slate-700">{m.subject}</p>
-                <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${m.opens > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                <p className="truncate text-sm font-medium text-slate-200">{m.subject}</p>
+                <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${m.opens > 0 ? 'bg-emerald-500/10 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
                   {m.opens > 0 ? `👁 ${m.opens} open${m.opens > 1 ? 's' : ''}` : 'unopened'}
                 </span>
               </div>
@@ -742,7 +742,7 @@ function EmailModal({ open, onClose, lead, onSent, prefill }) {
     <Modal open={open} onClose={onClose} title={`Email ${lead.first_name} (${lead.email || 'no email'})`} wide>
       <div className="space-y-3">
         {prefill?.docLink && (
-          <div className="break-all rounded-lg bg-emerald-50 p-2.5 text-xs text-emerald-700">📎 Secure link attached to this email: {prefill.docLink}</div>
+          <div className="break-all rounded-lg bg-emerald-500/10 p-2.5 text-xs text-emerald-300">📎 Secure link attached to this email: {prefill.docLink}</div>
         )}
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -804,7 +804,7 @@ function DocRequestModal({ open, onClose, lead, onDone, onCreated }) {
     <Modal open={open} onClose={onClose} title="Request documents (secure link)">
       {link ? (
         <div className="space-y-3">
-          <div className="rounded-lg bg-emerald-50 p-4 text-sm text-emerald-700">Secure link created! Send it to {lead.first_name || 'the claimant'} by email or text.</div>
+          <div className="rounded-lg bg-emerald-500/10 p-4 text-sm text-emerald-300">Secure link created! Send it to {lead.first_name || 'the claimant'} by email or text.</div>
           <div className="break-all rounded-lg bg-slate-900 p-3 font-mono text-xs text-emerald-300">{link}</div>
           {lead.email && onCreated && (
             <button className="btn-primary w-full" onClick={() => onCreated(link)}>
@@ -822,8 +822,8 @@ function DocRequestModal({ open, onClose, lead, onDone, onCreated }) {
             <label className="label">Documents needed</label>
             <div className="grid grid-cols-2 gap-1.5">
               {DOC_TYPES.map((t) => (
-                <label key={t} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-sm ${types.includes(t) ? 'border-brand-400 bg-brand-50 text-brand-800' : 'border-slate-200 text-slate-600'}`}>
-                  <input type="checkbox" checked={types.includes(t)} onChange={() => toggle(t)} className="h-4 w-4 rounded border-slate-300" />
+                <label key={t} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-sm ${types.includes(t) ? 'border-brand-400 bg-brand-500/10 text-brand-200' : 'border-slate-700 text-slate-300'}`}>
+                  <input type="checkbox" checked={types.includes(t)} onChange={() => toggle(t)} className="h-4 w-4 rounded border-slate-600" />
                   {t}
                 </label>
               ))}
@@ -855,7 +855,7 @@ function QuickTask({ onAdd, busy }) {
     <div className="relative">
       <button className="btn-ghost !py-1.5 text-xs" onClick={() => setOpen((o) => !o)}><Plus size={13} /> Add task</button>
       {open && (
-        <div className="absolute right-0 z-20 mt-2 w-72 space-y-2 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+        <div className="absolute right-0 z-20 mt-2 w-72 space-y-2 rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-xl">
           <input className="input" autoFocus placeholder="Task title…" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
           <div className="flex gap-2">
             <select className="input" value={type} onChange={(e) => setType(e.target.value)}>
@@ -898,7 +898,7 @@ function IntakeCard({ lead, onSaved }) {
   return (
     <div className="card p-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-700"><NotebookPen size={15} className="text-brand-600" /> SSDI Intake — fill while on the call</h2>
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-200"><NotebookPen size={15} className="text-brand-400" /> SSDI Intake — fill while on the call</h2>
         <div className="flex items-center gap-2">
           <span className="text-xs text-slate-400">{answered}/{totalQ} answered</span>
           <button className="btn-primary !py-1.5 text-xs" onClick={save} disabled={busy || !dirty}>
@@ -906,12 +906,12 @@ function IntakeCard({ lead, onSaved }) {
           </button>
         </div>
       </div>
-      {dirty && <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">Unsaved intake answers — click Save intake before leaving.</p>}
+      {dirty && <p className="mb-3 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-300">Unsaved intake answers — click Save intake before leaving.</p>}
       <div className="space-y-4">
         {INTAKE_SECTIONS.map((section) => (
-          <details key={section.name} open={section === INTAKE_SECTIONS[0]} className="rounded-xl border border-slate-200">
-            <summary className="cursor-pointer select-none px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">{section.name}</summary>
-            <div className="space-y-3 border-t border-slate-100 p-4">
+          <details key={section.name} open={section === INTAKE_SECTIONS[0]} className="rounded-xl border border-slate-700">
+            <summary className="cursor-pointer select-none px-4 py-2.5 text-sm font-semibold text-slate-200 hover:bg-slate-800/70">{section.name}</summary>
+            <div className="space-y-3 border-t border-slate-800 p-4">
               {section.questions.map((q) => (
                 <div key={q.id}>
                   <label className="label !mb-1">{q.q}</label>
@@ -919,7 +919,7 @@ function IntakeCard({ lead, onSaved }) {
                     <div className="mb-1 flex gap-1">
                       {['Yes,', 'No,'].map((p) => (
                         <button key={p} type="button" onClick={() => setYesNo(q.id, p)}
-                          className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${String(data[q.id] || '').startsWith(p) ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{p.replace(',', '')}</button>
+                          className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${String(data[q.id] || '').startsWith(p) ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>{p.replace(',', '')}</button>
                       ))}
                     </div>
                   )}

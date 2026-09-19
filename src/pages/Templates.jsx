@@ -45,7 +45,7 @@ export default function Templates() {
   return (
     <div className="mx-auto max-w-5xl space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-bold text-slate-800">Templates</h1>
+        <h1 className="text-xl font-bold text-slate-100">Templates</h1>
         {admin && (
           <button className="btn-primary" onClick={() => setEditing({ name: '', type, subject: '', body: '' })}>
             <Plus size={15} /> New template
@@ -53,11 +53,11 @@ export default function Templates() {
         )}
       </div>
       <div className="flex gap-2">
-        <button className={`btn !py-1.5 text-sm ${type === 'email' ? 'bg-brand-600 text-white' : 'card text-slate-600'}`} onClick={() => setType('email')}>📧 Email templates</button>
-        <button className={`btn !py-1.5 text-sm ${type === 'text' ? 'bg-brand-600 text-white' : 'card text-slate-600'}`} onClick={() => setType('text')}>💬 Text (SMS) snippets</button>
+        <button className={`btn !py-1.5 text-sm ${type === 'email' ? 'bg-brand-600 text-white' : 'card text-slate-300'}`} onClick={() => setType('email')}>📧 Email templates</button>
+        <button className={`btn !py-1.5 text-sm ${type === 'text' ? 'bg-brand-600 text-white' : 'card text-slate-300'}`} onClick={() => setType('text')}>💬 Text (SMS) snippets</button>
       </div>
-      <p className="text-sm text-slate-500">
-        Variables: <code className="rounded bg-slate-200 px-1.5 py-0.5 text-xs">{'{{first_name}}'}</code> <code className="rounded bg-slate-200 px-1.5 py-0.5 text-xs">{'{{last_name}}'}</code> <code className="rounded bg-slate-200 px-1.5 py-0.5 text-xs">{'{{phone}}'}</code> <code className="rounded bg-slate-200 px-1.5 py-0.5 text-xs">{'{{agent_name}}'}</code> <code className="rounded bg-slate-200 px-1.5 py-0.5 text-xs">{'{{doc_link}}'}</code>
+      <p className="text-sm text-slate-400">
+        Variables: <code className="rounded bg-slate-700 px-1.5 py-0.5 text-xs">{'{{first_name}}'}</code> <code className="rounded bg-slate-700 px-1.5 py-0.5 text-xs">{'{{last_name}}'}</code> <code className="rounded bg-slate-700 px-1.5 py-0.5 text-xs">{'{{phone}}'}</code> <code className="rounded bg-slate-700 px-1.5 py-0.5 text-xs">{'{{agent_name}}'}</code> <code className="rounded bg-slate-700 px-1.5 py-0.5 text-xs">{'{{doc_link}}'}</code>
       </p>
 
       {!templates && !loadError ? <div className="col-span-2 flex justify-center py-16"><Spinner className="h-7 w-7" /></div>
@@ -69,18 +69,18 @@ export default function Templates() {
             <div key={t.id} className="card p-5">
               <div className="mb-2 flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <h3 className="text-sm font-semibold text-slate-800">{t.name}</h3>
+                  <h3 className="text-sm font-semibold text-slate-100">{t.name}</h3>
                   {t.subject ? <p className="truncate text-xs text-slate-400">Subject: {t.subject}</p> : null}
                   <p className="text-[11px] text-slate-400">updated {fmtDate(t.updated_at)}</p>
                 </div>
                 {admin && (
                   <div className="flex shrink-0 gap-1">
-                    <button className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600" onClick={() => setEditing(t)} title="Edit"><Save size={15} /></button>
-                    <button className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-rose-500" onClick={() => setConfirmDel(t.id)} title="Delete"><Trash2 size={15} /></button>
+                    <button className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-brand-400" onClick={() => setEditing(t)} title="Edit"><Save size={15} /></button>
+                    <button className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-rose-500" onClick={() => setConfirmDel(t.id)} title="Delete"><Trash2 size={15} /></button>
                   </div>
                 )}
               </div>
-              <div className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">{t.body}</div>
+              <div className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-lg bg-slate-800/70 p-3 text-xs leading-relaxed text-slate-300">{t.body}</div>
             </div>
           ))}
         </div>
@@ -114,7 +114,7 @@ export default function Templates() {
         )}
       </Modal>
       <Modal open={!!confirmDel} onClose={() => setConfirmDel(null)} title="Delete template?">
-        <p className="text-sm text-slate-600">This template will be permanently removed.</p>
+        <p className="text-sm text-slate-300">This template will be permanently removed.</p>
         <div className="mt-4 flex justify-end gap-2">
           <button className="btn-ghost" onClick={() => setConfirmDel(null)}>Cancel</button>
           <button className="btn-danger" onClick={del} disabled={deleting}>{deleting ? 'Deleting…' : 'Delete'}</button>

@@ -32,27 +32,27 @@ export default function Dashboard() {
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-slate-800">
+        <h1 className="text-xl font-bold text-slate-100">
           {data.role === 'admin' ? 'Company Overview' : `Welcome back, ${profile?.name?.split(' ')[0]}`}
         </h1>
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-slate-400">
           {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })} — here's your pipeline at a glance.
         </p>
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Total leads" value={d.totals.leads} sub={`${d.today.newLeads} new today`} icon={<Users2 size={16} />} />
-        <StatCard label="Signed" value={d.totals.signed} accent="text-emerald-600" sub="Signed + Approved" />
-        <StatCard label="Approved" value={d.totals.approved} accent="text-emerald-700" />
-        <StatCard label="Conversion rate" value={`${d.totals.conversion}%`} accent="text-brand-600" sub="Signed & Approved ÷ all leads" />
+        <StatCard label="Signed" value={d.totals.signed} accent="text-emerald-400" sub="Signed + Approved" />
+        <StatCard label="Approved" value={d.totals.approved} accent="text-emerald-300" />
+        <StatCard label="Conversion rate" value={`${d.totals.conversion}%`} accent="text-brand-400" sub="Signed & Approved ÷ all leads" />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="card p-5 lg:col-span-2">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-700">Last 14 days</h2>
-            <div className="flex items-center gap-4 text-xs text-slate-500">
-              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-brand-500" /> New leads</span>
+            <h2 className="text-sm font-semibold text-slate-200">Last 14 days</h2>
+            <div className="flex items-center gap-4 text-xs text-slate-400">
+              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-brand-500/100" /> New leads</span>
               <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-400" /> Emails sent</span>
             </div>
           </div>
@@ -63,17 +63,17 @@ export default function Dashboard() {
         </div>
 
         <div className="card p-5">
-          <h2 className="mb-4 text-sm font-semibold text-slate-700">Dispositions</h2>
+          <h2 className="mb-4 text-sm font-semibold text-slate-200">Dispositions</h2>
           {dispRows.length === 0 && <p className="py-6 text-center text-sm text-slate-400">No leads yet</p>}
           <div className="space-y-2.5">
             {dispRows.map((r) => (
               <div key={r.name}>
                 <div className="mb-1 flex justify-between text-xs">
-                  <span className="text-slate-600">{r.name}</span>
-                  <span className="font-semibold text-slate-700">{r.count}</span>
+                  <span className="text-slate-300">{r.name}</span>
+                  <span className="font-semibold text-slate-200">{r.count}</span>
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-                  <div className="h-full rounded-full bg-brand-500" style={{ width: `${(r.count / maxDisp) * 100}%` }} />
+                <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
+                  <div className="h-full rounded-full bg-brand-500/100" style={{ width: `${(r.count / maxDisp) * 100}%` }} />
                 </div>
               </div>
             ))}
@@ -83,22 +83,22 @@ export default function Dashboard() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="card p-5">
-          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700"><PhoneCall size={15} className="text-brand-600" /> Follow-ups due today</h2>
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-200"><PhoneCall size={15} className="text-brand-400" /> Follow-ups due today</h2>
           {d.dueLeads.length === 0 && d.dueTasks.length === 0 && <p className="py-4 text-center text-sm text-slate-400">Nothing due — nice work 🎉</p>}
           <div className="space-y-2">
             {d.dueLeads.map((l) => (
-              <Link key={l.id} to={`/leads/${l.id}`} className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2 hover:border-brand-200 hover:bg-brand-50/40">
+              <Link key={l.id} to={`/leads/${l.id}`} className="flex items-center justify-between rounded-lg border border-slate-800 px-3 py-2 hover:border-brand-500/30 hover:bg-brand-500/10/40">
                 <div>
-                  <p className="text-sm font-medium text-slate-700">{leadName(l)}</p>
+                  <p className="text-sm font-medium text-slate-200">{leadName(l)}</p>
                   <p className="text-xs text-slate-400">{fmtDateTime(l.next_followup_at)}</p>
                 </div>
                 <ArrowRight size={14} className="text-slate-300" />
               </Link>
             ))}
             {d.dueTasks.map((t) => (
-              <Link key={'t' + t.id} to={t.lead_id ? `/leads/${t.lead_id}` : '/tasks'} className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2 hover:border-brand-200 hover:bg-brand-50/40">
+              <Link key={'t' + t.id} to={t.lead_id ? `/leads/${t.lead_id}` : '/tasks'} className="flex items-center justify-between rounded-lg border border-slate-800 px-3 py-2 hover:border-brand-500/30 hover:bg-brand-500/10/40">
                 <div>
-                  <p className="text-sm font-medium text-slate-700">{t.title}</p>
+                  <p className="text-sm font-medium text-slate-200">{t.title}</p>
                   <p className="text-xs text-slate-400">{t.type} · {t.leads ? leadName(t.leads) : 'no lead'}</p>
                 </div>
                 <ArrowRight size={14} className="text-slate-300" />
@@ -108,12 +108,12 @@ export default function Dashboard() {
         </div>
 
         <div className="card p-5">
-          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700"><Clock size={15} className="text-brand-600" /> Recent activity</h2>
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-200"><Clock size={15} className="text-brand-400" /> Recent activity</h2>
           {d.recent.length === 0 && <Empty title="No activity yet" />}
           <div className="space-y-2.5">
             {d.recent.map((a) => (
-              <Link key={a.id} to={`/leads/${a.lead_id}`} className="block rounded-lg px-2 py-1.5 hover:bg-slate-50">
-                <p className="text-sm text-slate-700">{a.title}</p>
+              <Link key={a.id} to={`/leads/${a.lead_id}`} className="block rounded-lg px-2 py-1.5 hover:bg-slate-800/70">
+                <p className="text-sm text-slate-200">{a.title}</p>
                 <p className="text-[11px] text-slate-400">{a.leads ? leadName(a.leads) : ''} · {fmtDateTime(a.created_at)}</p>
               </Link>
             ))}
@@ -121,15 +121,15 @@ export default function Dashboard() {
         </div>
 
         <div className="card p-5">
-          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700"><Mail size={15} className="text-brand-600" /> Today</h2>
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-200"><Mail size={15} className="text-brand-400" /> Today</h2>
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-lg bg-slate-50 p-3 text-center">
-              <p className="text-2xl font-bold text-slate-800">{d.today.newLeads}</p>
-              <p className="text-xs text-slate-500">New leads</p>
+            <div className="rounded-lg bg-slate-800/70 p-3 text-center">
+              <p className="text-2xl font-bold text-slate-100">{d.today.newLeads}</p>
+              <p className="text-xs text-slate-400">New leads</p>
             </div>
-            <div className="rounded-lg bg-slate-50 p-3 text-center">
-              <p className="text-2xl font-bold text-slate-800">{d.today.emailsSent}</p>
-              <p className="text-xs text-slate-500">Emails sent</p>
+            <div className="rounded-lg bg-slate-800/70 p-3 text-center">
+              <p className="text-2xl font-bold text-slate-100">{d.today.emailsSent}</p>
+              <p className="text-xs text-slate-400">Emails sent</p>
             </div>
           </div>
           <p className="mt-3 text-xs text-slate-400">Keep calling — every disposition trains Meta to send you better leads.</p>
@@ -140,28 +140,28 @@ export default function Dashboard() {
 
       {d.team && (
         <div className="card overflow-hidden">
-          <div className="border-b border-slate-100 px-5 py-3.5">
-            <h2 className="text-sm font-semibold text-slate-700">Team performance</h2>
+          <div className="border-b border-slate-800 px-5 py-3.5">
+            <h2 className="text-sm font-semibold text-slate-200">Team performance</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-slate-50">
+              <thead className="bg-slate-800/70">
                 <tr>
                   <th className="th">Agent</th><th className="th">Role</th><th className="th">Leads</th>
                   <th className="th">Signed + Approved</th><th className="th">Conversion</th>
                   <th className="th">Emails sent</th><th className="th">Active today</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-800">
                 {d.team.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-50/60">
-                    <td className="td font-medium text-slate-800">{u.name}</td>
-                    <td className="td capitalize text-slate-500">{u.role}</td>
+                  <tr key={u.id} className="hover:bg-slate-800/70/60">
+                    <td className="td font-medium text-slate-100">{u.name}</td>
+                    <td className="td capitalize text-slate-400">{u.role}</td>
                     <td className="td">{u.leads}</td>
-                    <td className="td text-emerald-600 font-medium">{u.signed}</td>
+                    <td className="td text-emerald-400 font-medium">{u.signed}</td>
                     <td className="td">{u.conversion}%</td>
                     <td className="td">{u.emailsSent}</td>
-                    <td className="td"><span className="inline-flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${u.activeSeconds > 0 ? 'bg-emerald-500' : 'bg-slate-300'}`} />{fmtDuration(u.activeSeconds)}</span></td>
+                    <td className="td"><span className="inline-flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${u.activeSeconds > 0 ? 'bg-emerald-500/100' : 'bg-slate-300'}`} />{fmtDuration(u.activeSeconds)}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -188,17 +188,17 @@ function AttentionPanel({ items, onDone }) {
   }, { toast, successMsg: 'Lead reassigned', onDone })
   const untouched = (l) => Math.floor((Date.now() - new Date(l.last_activity_at || l.created_at).getTime()) / 86400000)
   return (
-    <div className="card overflow-hidden border-amber-200">
-      <div className="flex items-center gap-2 border-b border-amber-100 bg-amber-50 px-5 py-3">
-        <AlertTriangle size={15} className="text-amber-600" />
-        <h2 className="text-sm font-semibold text-amber-800">Needs attention — untouched for 7+ days</h2>
+    <div className="card overflow-hidden border-amber-500/30">
+      <div className="flex items-center gap-2 border-b border-amber-100 bg-amber-500/10 px-5 py-3">
+        <AlertTriangle size={15} className="text-amber-400" />
+        <h2 className="text-sm font-semibold text-amber-200">Needs attention — untouched for 7+ days</h2>
       </div>
-      <div className="divide-y divide-slate-100">
+      <div className="divide-y divide-slate-800">
         {items.map((l) => (
           <div key={l.id} className="flex flex-wrap items-center gap-2 px-5 py-2.5">
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-slate-800">
-                <Link className="hover:text-brand-600 hover:underline" to={`/leads/${l.id}`}>{leadName(l)}</Link>
+              <p className="text-sm font-medium text-slate-100">
+                <Link className="hover:text-brand-400 hover:underline" to={`/leads/${l.id}`}>{leadName(l)}</Link>
                 {'  '}<DispositionBadge value={l.disposition} />
               </p>
               <p className="text-[11px] text-slate-400">{l.profiles?.name || 'unassigned'} · last touched {untouched(l)} days ago</p>
@@ -223,18 +223,18 @@ function TargetsPanel({ activity, targets }) {
   ]
   return (
     <div className="card p-5">
-      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700"><Target size={15} className="text-brand-600" /> Daily targets</h2>
+      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-200"><Target size={15} className="text-brand-400" /> Daily targets</h2>
       <div className="space-y-3">
         {rows.map((r) => {
           const pct = r.target ? Math.min(100, Math.round((r.value / r.target) * 100)) : 0
           return (
             <div key={r.label}>
               <div className="mb-1 flex justify-between text-xs">
-                <span className="text-slate-600">{r.label}</span>
-                <span className="font-semibold text-slate-700">{r.value} / {r.target}</span>
+                <span className="text-slate-300">{r.label}</span>
+                <span className="font-semibold text-slate-200">{r.value} / {r.target}</span>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                <div className={`h-full rounded-full ${pct >= 100 ? 'bg-emerald-500' : 'bg-brand-500'}`} style={{ width: `${pct}%` }} />
+              <div className="h-2 overflow-hidden rounded-full bg-slate-800">
+                <div className={`h-full rounded-full ${pct >= 100 ? 'bg-emerald-500/100' : 'bg-brand-500/100'}`} style={{ width: `${pct}%` }} />
               </div>
             </div>
           )
@@ -250,27 +250,27 @@ function Leaderboard({ rows }) {
   const medal = (i) => (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`)
   return (
     <div className="card overflow-hidden">
-      <div className="border-b border-slate-100 px-5 py-3.5">
-        <h2 className="text-sm font-semibold text-slate-700">🏆 Weekly leaderboard <span className="ml-1 text-xs font-normal text-slate-400">last 7 days · score = calls + emails + dispositions + 5×signed</span></h2>
+      <div className="border-b border-slate-800 px-5 py-3.5">
+        <h2 className="text-sm font-semibold text-slate-200">🏆 Weekly leaderboard <span className="ml-1 text-xs font-normal text-slate-400">last 7 days · score = calls + emails + dispositions + 5×signed</span></h2>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full">
-          <thead className="bg-slate-50">
+          <thead className="bg-slate-800/70">
             <tr>
               <th className="th">#</th><th className="th">Agent</th><th className="th">Calls logged</th>
               <th className="th">Dispositions set</th><th className="th">Signed/Approved</th><th className="th">Emails</th><th className="th">Score</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-slate-800">
             {rows.map((r, i) => (
-              <tr key={r.name} className={i === 0 ? 'bg-amber-50/60' : ''}>
+              <tr key={r.name} className={i === 0 ? 'bg-amber-500/10/60' : ''}>
                 <td className="td text-lg">{medal(i)}</td>
-                <td className="td font-medium text-slate-800">{r.name}</td>
+                <td className="td font-medium text-slate-100">{r.name}</td>
                 <td className="td">{r.calls}</td>
                 <td className="td">{r.dispositions}</td>
-                <td className="td text-emerald-600 font-medium">{r.signed}</td>
+                <td className="td text-emerald-400 font-medium">{r.signed}</td>
                 <td className="td">{r.emails}</td>
-                <td className="td font-bold text-brand-700">{r.score}</td>
+                <td className="td font-bold text-brand-300">{r.score}</td>
               </tr>
             ))}
           </tbody>

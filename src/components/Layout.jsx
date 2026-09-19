@@ -129,7 +129,7 @@ export default function Layout({ children }) {
     <div className="flex min-h-screen">
       {/* offline banner — never block the UI, just inform */}
       {!online && (
-        <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-center gap-2 bg-amber-500 px-4 py-1.5 text-sm font-medium text-white">
+        <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-center gap-2 bg-amber-500/100 px-4 py-1.5 text-sm font-medium text-white">
           <WifiOff size={15} /> You're offline — changes can't be saved right now. Reconnecting automatically…
         </div>
       )}
@@ -148,14 +148,14 @@ export default function Layout({ children }) {
           {NAV.map((item) => <NavItem key={item.to} item={item} />)}
           {profile?.role === 'admin' && (
             <>
-              <p className="px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-widest text-slate-500">Administration</p>
+              <p className="px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-widest text-slate-400">Administration</p>
               {ADMIN_NAV.map((item) => <NavItem key={item.to} item={item} />)}
             </>
           )}
         </nav>
         <div className="border-t border-slate-800 p-3">
           <div className="flex items-center gap-2.5 rounded-lg px-2 py-2">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-500/20 text-sm font-semibold text-brand-300">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-500/100/20 text-sm font-semibold text-brand-300">
               {(profile?.name || '?').slice(0, 1).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
@@ -173,8 +173,8 @@ export default function Layout({ children }) {
 
       {/* main */}
       <div className="flex min-h-screen w-full flex-col lg:pl-60">
-        <header className={`sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur lg:px-8 ${!online ? 'mt-8' : ''}`}>
-          <button className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden" onClick={() => setSidebarOpen(true)}><Menu size={20} /></button>
+        <header className={`sticky top-0 z-20 flex items-center gap-3 border-b border-slate-700 bg-slate-900/90 px-4 py-3 backdrop-blur lg:px-8 ${!online ? 'mt-8' : ''}`}>
+          <button className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 lg:hidden" onClick={() => setSidebarOpen(true)}><Menu size={20} /></button>
           {/* global search — jump to any lead instantly */}
           <div className="relative w-full max-w-xs lg:max-w-sm" ref={searchRef}>
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -188,11 +188,11 @@ export default function Layout({ children }) {
               onKeyDown={(e) => e.key === 'Escape' && setSearchOpen(false)}
             />
             {searchOpen && results.length > 0 && (
-              <div className="absolute left-0 right-0 z-30 mt-2 max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
+              <div className="absolute left-0 right-0 z-30 mt-2 max-h-80 overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 shadow-xl">
                 {results.map((r) => (
-                  <button key={r.id} onClick={() => goToLead(r.id)} className="flex w-full items-center justify-between gap-2 border-b border-slate-50 px-3 py-2.5 text-left hover:bg-brand-50/60">
+                  <button key={r.id} onClick={() => goToLead(r.id)} className="flex w-full items-center justify-between gap-2 border-b border-slate-50 px-3 py-2.5 text-left hover:bg-brand-500/10/60">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-slate-700">{leadName(r)}</p>
+                      <p className="truncate text-sm font-medium text-slate-200">{leadName(r)}</p>
                       <p className="text-[11px] text-slate-400">{r.phone || r.email || '—'}</p>
                     </div>
                     <DispositionBadge value={r.disposition} />
@@ -205,24 +205,24 @@ export default function Layout({ children }) {
           <div className="relative" ref={bellRef}>
             <button
               onClick={() => { setNotifOpen((o) => !o); if (unread) markRead() }}
-              className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+              className="relative rounded-lg p-2 text-slate-400 hover:bg-slate-800"
             >
               <Bell size={19} />
-              {unread > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">{unread}</span>}
+              {unread > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500/100 px-1 text-[10px] font-bold text-white">{unread}</span>}
             </button>
             {notifOpen && (
-              <div className="absolute right-0 mt-2 w-80 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
-                <p className="border-b border-slate-100 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Notifications</p>
+              <div className="absolute right-0 mt-2 w-80 overflow-hidden rounded-xl border border-slate-700 bg-slate-900 shadow-xl">
+                <p className="border-b border-slate-800 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Notifications</p>
                 <div className="max-h-80 overflow-y-auto">
                   {notifs.length === 0 && <p className="px-4 py-6 text-center text-sm text-slate-400">Nothing yet</p>}
                   {notifs.map((n) => (
                     <button
                       key={n.id}
                       onClick={() => { if (n.lead_id) { setNotifOpen(false); navigate(`/leads/${n.lead_id}`) } }}
-                      className="block w-full border-b border-slate-50 px-4 py-3 text-left hover:bg-slate-50"
+                      className="block w-full border-b border-slate-50 px-4 py-3 text-left hover:bg-slate-800/70"
                     >
-                      <p className="text-sm font-medium text-slate-700">{n.title}</p>
-                      {n.body && <p className="mt-0.5 text-xs text-slate-500">{n.body}</p>}
+                      <p className="text-sm font-medium text-slate-200">{n.title}</p>
+                      {n.body && <p className="mt-0.5 text-xs text-slate-400">{n.body}</p>}
                       <p className="mt-1 text-[10px] text-slate-400">{fmtDateTime(n.created_at)}</p>
                     </button>
                   ))}
@@ -270,12 +270,12 @@ function FloatingScripts() {
         {open ? <X size={20} /> : <ScrollText size={20} />}
       </button>
       {open && (
-        <div className="fixed bottom-20 right-5 z-40 flex h-[70vh] w-[420px] max-w-[92vw] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-          <div className="flex flex-wrap gap-1 border-b border-slate-100 p-2">
+        <div className="fixed bottom-20 right-5 z-40 flex h-[70vh] w-[420px] max-w-[92vw] flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
+          <div className="flex flex-wrap gap-1 border-b border-slate-800 p-2">
             {SCRIPT_TABS.map(([v, label]) => (
-              <button key={v} onClick={() => setTab(v)} className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold ${tab === v ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{label}</button>
+              <button key={v} onClick={() => setTab(v)} className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold ${tab === v ? 'bg-brand-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}>{label}</button>
             ))}
-            <button onClick={() => setTab('rebuttals')} className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold ${tab === 'rebuttals' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>Rebuttals</button>
+            <button onClick={() => setTab('rebuttals')} className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold ${tab === 'rebuttals' ? 'bg-brand-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}>Rebuttals</button>
           </div>
           {tab === 'rebuttals' ? (
             <div className="flex min-h-0 flex-1 flex-col">
@@ -285,9 +285,9 @@ function FloatingScripts() {
               <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 pb-4">
                 {filtered.length === 0 && <p className="py-6 text-center text-sm text-slate-400">{rebuttals.length ? 'No match' : 'No rebuttals yet — add them in Admin → Scripts'}</p>}
                 {filtered.map((r) => (
-                  <div key={r.title} className="rounded-xl bg-slate-50 p-3">
-                    <p className="text-sm font-semibold text-slate-800">{r.title}</p>
-                    <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-slate-600">{r.body}</p>
+                  <div key={r.title} className="rounded-xl bg-slate-800/70 p-3">
+                    <p className="text-sm font-semibold text-slate-100">{r.title}</p>
+                    <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-slate-300">{r.body}</p>
                   </div>
                 ))}
               </div>

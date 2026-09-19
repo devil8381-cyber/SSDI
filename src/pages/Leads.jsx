@@ -157,7 +157,7 @@ export default function Leads() {
   return (
     <div className="mx-auto max-w-7xl space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-bold text-slate-800">Leads <span className="text-sm font-medium text-slate-400">({total})</span></h1>
+        <h1 className="text-xl font-bold text-slate-100">Leads <span className="text-sm font-medium text-slate-400">({total})</span></h1>
         <div className="flex flex-wrap gap-2">
           {admin && <button className="btn-ghost" onClick={() => setShowImport(true)}><Upload size={15} /> Import CSV</button>}
           <button className="btn-ghost" onClick={exportCsv} disabled={exporting}>
@@ -196,11 +196,11 @@ export default function Leads() {
       </div>
 
       {selected.size > 0 && (
-        <div className="card flex flex-wrap items-center gap-3 border-brand-200 bg-brand-50/60 p-3">
-          <span className="text-sm font-medium text-brand-800">{selected.size} selected</span>
+        <div className="card flex flex-wrap items-center gap-3 border-brand-500/30 bg-brand-500/10/60 p-3">
+          <span className="text-sm font-medium text-brand-200">{selected.size} selected</span>
           {admin && (
             <>
-              <UserPlus size={15} className="text-brand-600" />
+              <UserPlus size={15} className="text-brand-400" />
               <select className="input w-auto" value={assignTo} onChange={(e) => setAssignTo(e.target.value)}>
                 <option value="">Assign to…</option>
                 <option value="unassigned">Unassigned (back to pool)</option>
@@ -234,33 +234,33 @@ export default function Leads() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-slate-50">
+              <thead className="bg-slate-800/70">
                 <tr>
-                  {admin && <th className="th w-8"><input type="checkbox" checked={allChecked} onChange={toggleAll} className="h-4 w-4 rounded border-slate-300" /></th>}
+                  {admin && <th className="th w-8"><input type="checkbox" checked={allChecked} onChange={toggleAll} className="h-4 w-4 rounded border-slate-600" /></th>}
                   <th className="th">Lead</th><th className="th">Phone</th><th className="th">Age</th>
                   <th className="th">Disposition</th><th className="th">Source</th>
                   {admin && <th className="th">Agent</th>}
                   <th className="th">Created</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-800">
                 {rows.map((r) => {
                   const age = ageFrom(r.dob)
                   return (
-                    <tr key={r.id} className="cursor-pointer hover:bg-brand-50/40" onClick={() => navigate(`/leads/${r.id}`)}>
+                    <tr key={r.id} className="cursor-pointer hover:bg-brand-500/10/40" onClick={() => navigate(`/leads/${r.id}`)}>
                       {admin && (
                         <td className="td" onClick={(e) => e.stopPropagation()}>
-                          <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} className="h-4 w-4 rounded border-slate-300" />
+                          <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} className="h-4 w-4 rounded border-slate-600" />
                         </td>
                       )}
                       <td className="td">
-                        <p className="font-medium text-slate-800">
+                        <p className="font-medium text-slate-100">
                           <span
                             className={`mr-1.5 inline-block h-2 w-2 rounded-full align-middle ${
                               (() => {
                                 // aging dot: how long since anyone touched this lead
                                 const days = Math.floor((Date.now() - new Date(r.last_activity_at || r.created_at).getTime()) / 86400000)
-                                return days <= 3 ? 'bg-emerald-500' : days <= 7 ? 'bg-amber-400' : 'bg-rose-500'
+                                return days <= 3 ? 'bg-emerald-500/100' : days <= 7 ? 'bg-amber-400' : 'bg-rose-500/100'
                               })()
                             }`}
                             title={`Last touched ${Math.floor((Date.now() - new Date(r.last_activity_at || r.created_at).getTime()) / 86400000)} day(s) ago`}
@@ -269,12 +269,12 @@ export default function Leads() {
                         </p>
                         <p className="text-xs text-slate-400">{[r.city, r.state].filter(Boolean).join(', ') || r.email || '—'}</p>
                       </td>
-                      <td className="td text-slate-600" onClick={(e) => e.stopPropagation()}>
+                      <td className="td text-slate-300" onClick={(e) => e.stopPropagation()}>
                         {r.phone
-                          ? <a href={getCallHref(r.phone) || '#'} className="hover:text-brand-600 hover:underline" title="Click to call">{r.phone}</a>
+                          ? <a href={getCallHref(r.phone) || '#'} className="hover:text-brand-400 hover:underline" title="Click to call">{r.phone}</a>
                           : '—'}
                       </td>
-                      <td className="td text-slate-600">{age ?? '—'}</td>
+                      <td className="td text-slate-300">{age ?? '—'}</td>
                       <td className="td" onClick={(e) => e.stopPropagation()}>
                         {quickId === r.id ? (
                           <select
@@ -293,9 +293,9 @@ export default function Leads() {
                         )}
                         {r.disposition_reason && quickId !== r.id ? <p className="mt-0.5 text-[11px] text-slate-400">{r.disposition_reason}</p> : null}
                       </td>
-                      <td className="td capitalize text-slate-500">{r.source || '—'}</td>
-                      {admin && <td className="td text-slate-600">{r.profiles?.name || <span className="text-amber-600">Unassigned</span>}</td>}
-                      <td className="td text-slate-500">{fmtDate(r.created_at)}</td>
+                      <td className="td capitalize text-slate-400">{r.source || '—'}</td>
+                      {admin && <td className="td text-slate-300">{r.profiles?.name || <span className="text-amber-400">Unassigned</span>}</td>}
+                      <td className="td text-slate-400">{fmtDate(r.created_at)}</td>
                     </tr>
                   )
                 })}
@@ -304,8 +304,8 @@ export default function Leads() {
           </div>
         )}
         {pages > 1 && !loading && !loadError && (
-          <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
-            <p className="text-xs text-slate-500">Page {page} of {pages}</p>
+          <div className="flex items-center justify-between border-t border-slate-800 px-4 py-3">
+            <p className="text-xs text-slate-400">Page {page} of {pages}</p>
             <div className="flex gap-2">
               <button className="btn-ghost !px-2.5 !py-1.5" disabled={page <= 1 || loading} onClick={() => setPage((p) => Math.max(1, p - 1))}><ChevronLeft size={15} /></button>
               <button className="btn-ghost !px-2.5 !py-1.5" disabled={page >= pages || loading} onClick={() => setPage((p) => Math.min(pages, p + 1))}><ChevronRight size={15} /></button>
@@ -381,15 +381,15 @@ function ImportModal({ open, onClose, agents, onDone }) {
   return (
     <Modal open={open} onClose={onClose} title="Import leads from CSV" wide>
       {step === 'file' ? (
-        <div className="rounded-xl border-2 border-dashed border-slate-200 p-10 text-center">
+        <div className="rounded-xl border-2 border-dashed border-slate-700 p-10 text-center">
           <Upload className="mx-auto mb-3 text-slate-300" size={32} />
-          <p className="text-sm text-slate-500">Choose a CSV file with your Meta leads export (up to {MAX_IMPORT_ROWS.toLocaleString()} rows)</p>
+          <p className="text-sm text-slate-400">Choose a CSV file with your Meta leads export (up to {MAX_IMPORT_ROWS.toLocaleString()} rows)</p>
           <input type="file" accept=".csv" onChange={onFile} className="mx-auto mt-4 block text-sm" />
         </div>
       ) : (
         <div className="space-y-4">
-          <p className="text-sm text-slate-500">{rows.length.toLocaleString()} rows found. Map the columns to lead fields:</p>
-          <div className="grid max-h-72 grid-cols-2 gap-3 overflow-y-auto rounded-xl bg-slate-50 p-4">
+          <p className="text-sm text-slate-400">{rows.length.toLocaleString()} rows found. Map the columns to lead fields:</p>
+          <div className="grid max-h-72 grid-cols-2 gap-3 overflow-y-auto rounded-xl bg-slate-800/70 p-4">
             {CANON.map(([field, label]) => (
               <div key={field}>
                 <label className="label">{label}</label>
@@ -400,7 +400,7 @@ function ImportModal({ open, onClose, agents, onDone }) {
               </div>
             ))}
           </div>
-          {mapError && <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{mapError}</p>}
+          {mapError && <p className="rounded-lg bg-rose-500/10 p-3 text-sm text-rose-300">{mapError}</p>}
           <div>
             <label className="label">Assign imported leads to</label>
             <select className="input" value={assignTo} onChange={(e) => setAssignTo(e.target.value)}>
@@ -470,7 +470,7 @@ function AddModal({ open, onClose, agents, onDone }) {
     }
   }
 
-  const fieldErr = (k) => errors[k] ? <p className="mt-1 text-xs text-rose-600">{errors[k]}</p> : null
+  const fieldErr = (k) => errors[k] ? <p className="mt-1 text-xs text-rose-400">{errors[k]}</p> : null
 
   return (
     <Modal open={open} onClose={onClose} title="Add lead">

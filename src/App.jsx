@@ -28,23 +28,24 @@ function Boot() {
 }
 
 // Per-route error boundary: a crash on one page never blanks the whole app.
-// Stale-code crashes (dev server died mid-session, old chunks after a deploy)
-// recover perfectly with one clean reload — do that automatically once before
-// ever showing the box, so the user usually never sees an error at all.
+// Only STALE-CODE crashes (old chunks after a deploy — "Failed to fetch
+// dynamically imported module" etc.) get a silent one-shot reload; every
+// other error shows the box so it's visible and reported, never masked.
 function RouteError() {
   const error = useRouteError()
-  const stamp = `aba_autoreload:${window.location.pathname}`
-  const last = Number(sessionStorage.getItem(stamp) || 0)
-  if (Date.now() - last > 60000) {
-    sessionStorage.setItem(stamp, String(Date.now()))
+  const msg = String(error?.message || '')
+  const isStaleChunk = /dynamically imported module|Loading chunk|Importing a module script failed/i.test(msg)
+  const stamp = 'aba_autoreload:' + window.location.pathname
+  if (isStaleChunk && !sessionStorage.getItem(stamp)) {
+    sessionStorage.setItem(stamp, '1')
     window.location.reload()
     return null
   }
   return (
     <Layout>
       <div className="card mx-auto mt-10 max-w-md p-8 text-center">
-        <h1 className="text-lg font-bold text-slate-800">This page couldn’t be displayed</h1>
-        <p className="mt-2 text-sm text-slate-500">
+        <h1 className="text-lg font-bold text-slate-100">This page couldn’t be displayed</h1>
+        <p className="mt-2 text-sm text-slate-400">
           {error?.message || 'An unexpected error occurred.'} Try again, or head back to the dashboard.
         </p>
         <div className="mt-5 flex justify-center gap-2">
@@ -86,10 +87,10 @@ function RequireAuth() {
   // give the user a way out instead of an endless boot spinner.
   if (!profile && profileError) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
+      <div className="flex min-h-screen items-center justify-center bg-slate-800 p-6">
         <div className="card max-w-md p-8 text-center">
-          <h1 className="text-lg font-bold text-slate-800">Couldn't load your account</h1>
-          <p className="mt-2 text-sm text-slate-500">{profileError}</p>
+          <h1 className="text-lg font-bold text-slate-100">Couldn't load your account</h1>
+          <p className="mt-2 text-sm text-slate-400">{profileError}</p>
           <p className="mt-1 text-xs text-slate-400">
             If this keeps happening, the database schema may not be set up — run <code>db/schema.sql</code> in the Supabase SQL editor.
           </p>

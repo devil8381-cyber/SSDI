@@ -45,7 +45,7 @@ export default function Tasks() {
   return (
     <div className="mx-auto max-w-5xl space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-bold text-slate-800">Tasks</h1>
+        <h1 className="text-xl font-bold text-slate-100">Tasks</h1>
         <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus size={15} /> New task</button>
       </div>
       <div className="card flex flex-wrap gap-2 p-3">
@@ -63,23 +63,23 @@ export default function Tasks() {
           : loadError ? <PageError message={loadError} onRetry={load} />
           : tasks.length === 0 ? <Empty icon={ClipboardList} title="No tasks here" hint="Create callbacks and follow-ups so nothing slips" />
           : (
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-slate-800">
             {tasks.map((t) => (
               <div key={t.id} className="flex items-center gap-3 px-5 py-3">
                 <button onClick={() => toggle(t)} disabled={toggling && busyId === t.id} className="text-slate-300 hover:text-emerald-500 disabled:opacity-40">
                   {busyId === t.id && toggling ? <Loader2 size={18} className="animate-spin" /> : t.status === 'open' ? <Circle size={18} /> : <CheckCircle2 size={18} className="text-emerald-500" />}
                 </button>
                 <div className="min-w-0 flex-1">
-                  <p className={`text-sm font-medium ${t.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{t.title}</p>
+                  <p className={`text-sm font-medium ${t.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-100'}`}>{t.title}</p>
                   <p className="text-xs text-slate-400">
-                    {t.leads ? <>Lead: <Link className="text-brand-600 hover:underline" to={`/leads/${t.leads.id}`}>{leadName(t.leads)}</Link> · </> : null}
+                    {t.leads ? <>Lead: <Link className="text-brand-400 hover:underline" to={`/leads/${t.leads.id}`}>{leadName(t.leads)}</Link> · </> : null}
                     {t.profiles ? <>for {t.profiles?.name} · </> : null}
                     <span className={isOverdue(t) ? 'font-semibold text-rose-500' : ''}>{t.due_at ? `due ${fmtDateTime(t.due_at)}` : 'no due date'}</span>
                   </p>
                 </div>
-                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-500">{(t.type || 'other').replace('_', ' ')}</span>
+                <span className="rounded-md bg-slate-800 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-400">{(t.type || 'other').replace('_', ' ')}</span>
                 {t.status === 'open' && (
-                  <button onClick={() => snooze(t)} disabled={snoozing && busyId === t.id} className="rounded-lg p-1.5 text-slate-300 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-40" title="Snooze 2 days">
+                  <button onClick={() => snooze(t)} disabled={snoozing && busyId === t.id} className="rounded-lg p-1.5 text-slate-300 hover:bg-slate-800 hover:text-brand-400 disabled:opacity-40" title="Snooze 2 days">
                     {snoozing && busyId === t.id ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />}
                   </button>
                 )}
@@ -132,7 +132,7 @@ function AddTask({ open, onClose, onDone }) {
   return (
     <Modal open={open} onClose={onClose} title="New task">
       <div className="space-y-3">
-        {err && <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{err}</p>}
+        {err && <p className="rounded-lg bg-rose-500/10 p-3 text-sm text-rose-300">{err}</p>}
         <div><label className="label">Title *</label><input className="input" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} autoFocus /></div>
         <div className="grid grid-cols-2 gap-3">
           <div><label className="label">Type</label>

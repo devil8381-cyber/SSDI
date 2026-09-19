@@ -3,15 +3,15 @@ export const DISPOSITIONS = [
 ]
 
 export const DISPOSITION_STYLES = {
-  New: 'bg-blue-100 text-blue-700 ring-blue-600/20',
-  Working: 'bg-amber-100 text-amber-700 ring-amber-600/20',
-  VM: 'bg-violet-100 text-violet-700 ring-violet-600/20',
-  Callback: 'bg-cyan-100 text-cyan-700 ring-cyan-600/20',
-  NIS: 'bg-slate-100 text-slate-600 ring-slate-500/20',
-  'Not Interested': 'bg-rose-100 text-rose-700 ring-rose-600/20',
-  Signed: 'bg-emerald-100 text-emerald-700 ring-emerald-600/20',
-  Approved: 'bg-emerald-600 text-white ring-emerald-600/20',
-  'Criteria Not Met': 'bg-zinc-200 text-zinc-700 ring-zinc-500/20',
+  New: 'bg-blue-500/10 text-blue-300 ring-blue-500/30',
+  Working: 'bg-amber-500/10 text-amber-300 ring-amber-500/30',
+  VM: 'bg-violet-500/10 text-violet-300 ring-violet-500/30',
+  Callback: 'bg-cyan-500/10 text-cyan-300 ring-cyan-500/30',
+  NIS: 'bg-slate-800 text-slate-300 ring-slate-500/20',
+  'Not Interested': 'bg-rose-500/10 text-rose-300 ring-rose-500/30',
+  Signed: 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/30',
+  Approved: 'bg-emerald-600 text-white ring-emerald-500/30',
+  'Criteria Not Met': 'bg-zinc-500/10 text-zinc-300 ring-zinc-500/30',
 }
 
 export const CRITERIA_REASONS = ['Age', 'Work history', 'Already receiving benefits', 'Under 12 months', 'Other']

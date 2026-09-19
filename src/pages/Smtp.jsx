@@ -32,8 +32,8 @@ export default function Smtp() {
     <div className="mx-auto max-w-5xl space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">SMTP servers</h1>
-          <p className="text-sm text-slate-500">Route each task through its own sender: callbacks on one server, document requests on another.</p>
+          <h1 className="text-xl font-bold text-slate-100">SMTP servers</h1>
+          <p className="text-sm text-slate-400">Route each task through its own sender: callbacks on one server, document requests on another.</p>
         </div>
         <button className="btn-primary" onClick={() => setEditing({ ...blank })}><Plus size={15} /> Add SMTP server</button>
       </div>
@@ -50,16 +50,16 @@ export default function Smtp() {
               <div key={p.id} className={`card p-5 ${p.is_active ? '' : 'opacity-60'}`}>
                 <div className="mb-3 flex items-start justify-between">
                   <div className="min-w-0">
-                    <h3 className="text-sm font-semibold text-slate-800">{p.name}</h3>
+                    <h3 className="text-sm font-semibold text-slate-100">{p.name}</h3>
                     <p className="mt-0.5 text-xs text-slate-400">{p.host}:{p.port}{p.secure ? ' (SSL)' : ' (STARTTLS)'} · {p.from_email}</p>
                   </div>
-                  <span className="shrink-0 rounded-md bg-brand-100 px-2 py-0.5 text-[11px] font-semibold text-brand-700">{purpose?.label || p.purpose}</span>
+                  <span className="shrink-0 rounded-md bg-brand-500/20 px-2 py-0.5 text-[11px] font-semibold text-brand-300">{purpose?.label || p.purpose}</span>
                 </div>
                 <p className="mb-3 text-xs text-slate-400">Daily limit: {p.daily_limit} emails · password {p.has_password ? 'saved ✓' : '⚠ missing'}</p>
                 <div className="flex gap-2">
                   <button className="btn-ghost !py-1.5 text-xs" onClick={() => setEditing(p)}><Pencil size={13} /> Edit</button>
                   <button className="btn-ghost !py-1.5 text-xs" onClick={() => setTestFor(p)}><Plug size={13} /> Test</button>
-                  <button className="btn-ghost !py-1.5 text-xs text-rose-600" onClick={() => setConfirmDel(p.id)}><Trash2 size={13} /> Delete</button>
+                  <button className="btn-ghost !py-1.5 text-xs text-rose-400" onClick={() => setConfirmDel(p.id)}><Trash2 size={13} /> Delete</button>
                 </div>
               </div>
             )
@@ -71,7 +71,7 @@ export default function Smtp() {
       <TestModal profile={testFor} onClose={() => setTestFor(null)} />
 
       <Modal open={!!confirmDel} onClose={() => setConfirmDel(null)} title="Delete SMTP profile?">
-        <p className="text-sm text-slate-600">Emails using this profile will fall back to another active one.</p>
+        <p className="text-sm text-slate-300">Emails using this profile will fall back to another active one.</p>
         <div className="mt-4 flex justify-end gap-2">
           <button className="btn-ghost" onClick={() => setConfirmDel(null)}>Cancel</button>
           <button className="btn-danger" onClick={del} disabled={deleting}>{deleting ? 'Deleting…' : 'Delete'}</button>
@@ -130,13 +130,13 @@ function EditModal({ profile, onClose, onDone }) {
     }
   }
 
-  const fieldErr = (k) => errors[k] ? <p className="mt-1 text-xs text-rose-600">{errors[k]}</p> : null
+  const fieldErr = (k) => errors[k] ? <p className="mt-1 text-xs text-rose-400">{errors[k]}</p> : null
 
   return (
     <Modal open={!!profile} onClose={onClose} title={isNew ? 'Add SMTP server' : 'Edit SMTP server'} wide>
       {f && (
         <div className="grid grid-cols-2 gap-3">
-          {formErr && <p className="col-span-2 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{formErr}</p>}
+          {formErr && <p className="col-span-2 rounded-lg bg-rose-500/10 p-3 text-sm text-rose-300">{formErr}</p>}
           <div className="col-span-2">
             <label className="label">Profile name</label>
             <input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="e.g. Docs sender (Brevo)" />
@@ -179,7 +179,7 @@ function EditModal({ profile, onClose, onDone }) {
             {fieldErr('from_email')}
           </div>
           <label className="col-span-2 flex items-center gap-2.5 text-sm">
-            <input type="checkbox" checked={!!f.secure} onChange={(e) => setF({ ...f, secure: e.target.checked })} className="h-4 w-4 rounded border-slate-300" />
+            <input type="checkbox" checked={!!f.secure} onChange={(e) => setF({ ...f, secure: e.target.checked })} className="h-4 w-4 rounded border-slate-600" />
             Use SSL/TLS direct (port 465). Leave unchecked for STARTTLS (port 587).
           </label>
           <div className="col-span-2 flex justify-end gap-2">
@@ -217,7 +217,7 @@ function TestModal({ profile, onClose }) {
   return (
     <Modal open onClose={onClose} title={`Test "${profile.name}"`}>
       <div className="space-y-3">
-        {err && <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{err}</p>}
+        {err && <p className="rounded-lg bg-rose-500/10 p-3 text-sm text-rose-300">{err}</p>}
         <div><label className="label">Send test to</label><input className="input" type="email" value={to} onChange={(e) => setTo(e.target.value)} autoFocus /></div>
         <div className="flex justify-end gap-2">
           <button className="btn-ghost" onClick={onClose}>Cancel</button>

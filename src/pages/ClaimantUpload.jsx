@@ -37,7 +37,7 @@ export default function ClaimantUpload() {
   if (error) {
     return (
       <Shell>
-        <div className="rounded-xl bg-rose-50 p-4 text-center text-sm text-rose-700">{error}</div>
+        <div className="rounded-xl bg-rose-500/10 p-4 text-center text-sm text-rose-300">{error}</div>
       </Shell>
     )
   }
@@ -47,25 +47,25 @@ export default function ClaimantUpload() {
 
   return (
     <Shell>
-      <h1 className="text-xl font-bold text-slate-800">
+      <h1 className="text-xl font-bold text-slate-100">
         {info.claimant ? `Hello, ${info.claimant.split(' ')[0]}!` : 'Secure document upload'}
       </h1>
-      <p className="mt-1 text-sm text-slate-500">Please upload the documents below. Your files go directly to your claims agent — encrypted in transit and only visible to your claims team.</p>
+      <p className="mt-1 text-sm text-slate-400">Please upload the documents below. Your files go directly to your claims agent — encrypted in transit and only visible to your claims team.</p>
 
-      {info.message && <div className="mt-3 rounded-xl bg-brand-50 p-3 text-sm text-brand-800">{info.message}</div>}
+      {info.message && <div className="mt-3 rounded-xl bg-brand-500/10 p-3 text-sm text-brand-200">{info.message}</div>}
 
       <div className="mt-4 space-y-2">
         {(info.docTypes || []).map((t) => {
           const st = uploads[t]
           const already = (info.uploaded || []).some((d) => d.doc_type === t)
           return (
-            <label key={t} className={`flex cursor-pointer items-center gap-3 rounded-xl border p-4 transition ${st?.status === 'done' || already ? 'border-emerald-300 bg-emerald-50/60' : 'border-slate-200 hover:border-brand-400 hover:bg-brand-50/40'}`}>
+            <label key={t} className={`flex cursor-pointer items-center gap-3 rounded-xl border p-4 transition ${st?.status === 'done' || already ? 'border-emerald-300 bg-emerald-500/10/60' : 'border-slate-700 hover:border-brand-400 hover:bg-brand-500/10/40'}`}>
               <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.heic" disabled={st?.status === 'uploading'} onChange={(e) => e.target.files?.[0] && upload(t, e.target.files[0])} />
-              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${st?.status === 'done' || already ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${st?.status === 'done' || already ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
                 {st?.status === 'uploading' ? <Loader2 size={18} className="animate-spin" /> : st?.status === 'done' || already ? <CheckCircle2 size={18} /> : <UploadCloud size={18} />}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-slate-800">{t}</p>
+                <p className="text-sm font-medium text-slate-100">{t}</p>
                 <p className="text-xs text-slate-400">
                   {st?.status === 'uploading' ? 'Uploading…'
                     : st?.status === 'done' ? `✅ ${st.name} — received!`
@@ -79,16 +79,16 @@ export default function ClaimantUpload() {
           )
         })}
         {(info.docTypes || []).length === 0 && (
-          <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 p-4 hover:border-brand-400">
+          <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-700 p-4 hover:border-brand-400">
             <input type="file" className="hidden" onChange={(e) => e.target.files?.[0] && upload('Document', e.target.files[0])} />
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500"><UploadCloud size={18} /></div>
-            <div><p className="text-sm font-medium text-slate-800">Upload your document</p><p className="text-xs text-slate-400">PDF, photo, or any document</p></div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-800 text-slate-400"><UploadCloud size={18} /></div>
+            <div><p className="text-sm font-medium text-slate-100">Upload your document</p><p className="text-xs text-slate-400">PDF, photo, or any document</p></div>
           </label>
         )}
       </div>
 
       {done > 0 && (
-        <div className="mt-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-700">
+        <div className="mt-4 rounded-xl bg-emerald-500/10 p-4 text-sm text-emerald-300">
           🎉 {done} document{done > 1 ? 's' : ''} received! Your agent has been notified. You can close this page or upload more files.
         </div>
       )}

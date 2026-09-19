@@ -45,26 +45,26 @@ export default function Documents() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
-      <h1 className="text-xl font-bold text-slate-800">Documents</h1>
+      <h1 className="text-xl font-bold text-slate-100">Documents</h1>
 
       <div className="card overflow-hidden">
-        <div className="border-b border-slate-100 px-5 py-3"><h2 className="text-sm font-semibold text-slate-700">Secure upload requests</h2></div>
+        <div className="border-b border-slate-800 px-5 py-3"><h2 className="text-sm font-semibold text-slate-200">Secure upload requests</h2></div>
         {!requests && !loadError ? <div className="flex justify-center py-16"><Spinner className="h-7 w-7" /></div>
           : loadError ? <PageError message={loadError} onRetry={load} />
           : requests.length === 0 ? <Empty icon={FileText} title="No document requests yet" hint="Create one from any lead page — Request documents" />
           : (
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-slate-800">
             {requests.map((r) => {
               const expired = new Date(r.expires_at) < new Date()
               return (
                 <div key={r.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
-                  <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase ${r.status === 'uploaded' ? 'bg-emerald-100 text-emerald-700' : expired ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-700'}`}>
+                  <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase ${r.status === 'uploaded' ? 'bg-emerald-500/10 text-emerald-300' : expired ? 'bg-rose-500/10 text-rose-400' : 'bg-amber-500/10 text-amber-300'}`}>
                     {r.status === 'uploaded' ? 'Received' : expired ? 'Expired' : 'Pending'}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-slate-800">
-                      {r.leads ? <Link className="hover:text-brand-600 hover:underline" to={`/leads/${r.leads.id}`}>{leadName(r.leads)}</Link> : '—'}
-                      <span className="ml-2 font-normal text-slate-500">{(r.doc_types || []).join(', ') || 'Any documents'}</span>
+                    <p className="text-sm font-medium text-slate-100">
+                      {r.leads ? <Link className="hover:text-brand-400 hover:underline" to={`/leads/${r.leads.id}`}>{leadName(r.leads)}</Link> : '—'}
+                      <span className="ml-2 font-normal text-slate-400">{(r.doc_types || []).join(', ') || 'Any documents'}</span>
                     </p>
                     <p className="text-xs text-slate-400">requested {fmtDateTime(r.created_at)} · expires {fmtDateTime(r.expires_at)}</p>
                   </div>
@@ -77,18 +77,18 @@ export default function Documents() {
       </div>
 
       <div className="card overflow-hidden">
-        <div className="border-b border-slate-100 px-5 py-3"><h2 className="text-sm font-semibold text-slate-700">Uploaded documents</h2></div>
+        <div className="border-b border-slate-800 px-5 py-3"><h2 className="text-sm font-semibold text-slate-200">Uploaded documents</h2></div>
         {loadError ? <PageError message={loadError} onRetry={load} />
           : docs.length === 0 ? <Empty title="No documents uploaded yet" />
           : (
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-slate-800">
             {docs.map((d) => (
               <div key={d.id} className="flex items-center gap-3 px-5 py-3">
                 <FileText size={16} className="text-slate-400" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-800">{d.doc_type || 'Document'} — {d.file_name}</p>
+                  <p className="truncate text-sm font-medium text-slate-100">{d.doc_type || 'Document'} — {d.file_name}</p>
                   <p className="text-xs text-slate-400">
-                    from {d.lead ? <Link className="text-brand-600 hover:underline" to={`/leads/${d.lead.id}`}>{leadName(d.lead)}</Link> : '—'} · {fmtDateTime(d.uploaded_at)}
+                    from {d.lead ? <Link className="text-brand-400 hover:underline" to={`/leads/${d.lead.id}`}>{leadName(d.lead)}</Link> : '—'} · {fmtDateTime(d.uploaded_at)}
                   </p>
                 </div>
                 <button className="btn-ghost !py-1.5 text-xs" onClick={() => download(d)} disabled={downloadingId === d.id}>

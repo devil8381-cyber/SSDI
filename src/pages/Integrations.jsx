@@ -8,7 +8,7 @@ export default function Integrations() {
   const toast = useToast()
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <h1 className="text-xl font-bold text-slate-800">Integrations</h1>
+      <h1 className="text-xl font-bold text-slate-100">Integrations</h1>
       <MetaCard />
       <DriveCard />
       <SheetsCard />
@@ -44,13 +44,13 @@ export function SheetsCard() {
       <div className="mb-4 flex items-center gap-2.5">
         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-green-700 text-white"><Table2 size={18} /></div>
         <div>
-          <h2 className="text-sm font-bold text-slate-800">Google Sheets — auto-import leads</h2>
-          <p className="text-xs text-slate-500">Pulls new rows from your sheet into the CRM as unassigned leads.</p>
+          <h2 className="text-sm font-bold text-slate-100">Google Sheets — auto-import leads</h2>
+          <p className="text-xs text-slate-400">Pulls new rows from your sheet into the CRM as unassigned leads.</p>
         </div>
       </div>
       {!f ? <Spinner className="h-5 w-5" /> : (
         <>
-          <div className="mb-4 space-y-2 rounded-xl bg-slate-50 p-4 text-xs leading-relaxed text-slate-600">
+          <div className="mb-4 space-y-2 rounded-xl bg-slate-800/70 p-4 text-xs leading-relaxed text-slate-300">
             <p>1. Finish the <b>Google Drive</b> setup below first — this reuses the same service account.</p>
             <p>2. In Google Sheets → <b>Share</b> your lead sheet with the service account email (Viewer is enough).</p>
             <p>3. First row must be headers — columns auto-map: First name, Last name, Email, Phone, DOB, State, City, Address, ZIP, Disability, Notes. Duplicates (by phone/email) are skipped automatically.</p>
@@ -71,17 +71,17 @@ export function SheetsCard() {
               </div>
             </div>
             <label className="flex items-center gap-2.5 text-sm">
-              <input type="checkbox" checked={!!f.auto_import} onChange={(e) => setF({ ...f, auto_import: e.target.checked })} className="h-4 w-4 rounded border-slate-300" />
+              <input type="checkbox" checked={!!f.auto_import} onChange={(e) => setF({ ...f, auto_import: e.target.checked })} className="h-4 w-4 rounded border-slate-600" />
               Auto-import every 10 minutes
             </label>
             <div className="flex flex-wrap items-center gap-2">
               <button className="btn-primary" onClick={save} disabled={busy}>Save settings</button>
               <button className="btn-ghost" onClick={importNow} disabled={importing}>{importing ? 'Importing…' : 'Import now'}</button>
             </div>
-            {result && <p className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">✅ {result.imported} imported · {result.updated} updated · {result.duplicates} duplicate(s)</p>}
+            {result && <p className="rounded-lg bg-emerald-500/10 p-3 text-sm text-emerald-300">✅ {result.imported} imported · {result.updated} updated · {result.duplicates} duplicate(s)</p>}
             {f.push_token && (
-              <div className="space-y-2 rounded-xl border border-brand-200 bg-brand-50/60 p-4 text-xs leading-relaxed text-slate-700">
-                <p className="text-sm font-bold text-slate-800">⚡ Instant push — leads arrive in seconds</p>
+              <div className="space-y-2 rounded-xl border border-brand-500/30 bg-brand-500/10/60 p-4 text-xs leading-relaxed text-slate-200">
+                <p className="text-sm font-bold text-slate-100">⚡ Instant push — leads arrive in seconds</p>
                 <p>1. In your Google Sheet: <b>Extensions → Apps Script</b> → paste the code below (the CRM URL and token are already filled).</p>
                 <p>2. Click <b>Triggers → Add Trigger</b> → function <code>onFormSubmit</code> → event source <b>From spreadsheet</b> → event type <b>On form submit</b> → Save. Approve the permissions once.</p>
                 <div className="relative">
@@ -92,7 +92,7 @@ export function SheetsCard() {
   UrlFetchApp.fetch('${window.location.origin}/api/sheets/push?token=${f.push_token}', { method: 'post', contentType: 'application/json', payload: JSON.stringify(row) });
 }`}</pre>
                   <button
-                    className="absolute right-2 top-2 rounded-md bg-white/10 p-1.5 text-white hover:bg-white/20"
+                    className="absolute right-2 top-2 rounded-md bg-slate-900/10 p-1.5 text-white hover:bg-slate-900/20"
                     title="Copy Apps Script"
                     onClick={() => navigator.clipboard.writeText(`function onFormSubmit(e) {\n  var row = {};\n  if (e.namedValues) { for (var k in e.namedValues) row[k] = e.namedValues[k][0]; }\n  else { (e.values || []).forEach(function (v, i) { row['col' + i] = v; }); }\n  UrlFetchApp.fetch('${window.location.origin}/api/sheets/push?token=${f.push_token}', { method: 'post', contentType: 'application/json', payload: JSON.stringify(row) });\n}`).then(() => toast('Apps Script copied — paste it in your sheet')).catch(() => {})}
                   ><Copy size={13} /></button>
@@ -155,7 +155,7 @@ export function MetaCard() {
     } catch (e) { toast(describeError(e), 'error') } finally { setBusy(false) }
   }
   const Dot = ({ ok, label }) => (
-    <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${ok ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${ok ? 'bg-emerald-500/10 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
       {ok ? <CheckCircle2 size={13} /> : <XCircle size={13} />} {label}
     </span>
   )
@@ -165,8 +165,8 @@ export function MetaCard() {
       <div className="mb-4 flex items-center gap-2.5">
         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white"><Zap size={18} /></div>
         <div>
-          <h2 className="text-sm font-bold text-slate-800">Meta (Facebook) Ads</h2>
-          <p className="text-xs text-slate-500">Receive instant-form leads + send lead-quality signals back so Meta optimizes.</p>
+          <h2 className="text-sm font-bold text-slate-100">Meta (Facebook) Ads</h2>
+          <p className="text-xs text-slate-400">Receive instant-form leads + send lead-quality signals back so Meta optimizes.</p>
         </div>
       </div>
       <div className="mb-4 flex flex-wrap gap-2">
@@ -184,10 +184,10 @@ export function MetaCard() {
         <div><label className="label">Test event code (optional, from Events Manager)</label><input className="input" value={form.test_event_code || ''} onChange={(e) => setForm({ ...form, test_event_code: e.target.value })} /></div>
       </div>
 
-      <div className="mt-4 rounded-xl bg-slate-50 p-4">
+      <div className="mt-4 rounded-xl bg-slate-800/70 p-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Webhook URL (paste into Meta → Webhooks → Page → Leadgen)</p>
         <div className="mt-1.5 flex items-center gap-2">
-          <code className="min-w-0 flex-1 truncate rounded-lg bg-white px-3 py-2 text-xs text-slate-700 ring-1 ring-slate-200">{s.webhook_url}</code>
+          <code className="min-w-0 flex-1 truncate rounded-lg bg-slate-900 px-3 py-2 text-xs text-slate-200 ring-1 ring-slate-700">{s.webhook_url}</code>
           <button className="btn-ghost !px-2.5 !py-1.5" onClick={() => { navigator.clipboard.writeText(s.webhook_url); toast('Webhook URL copied') }}><Copy size={13} /></button>
         </div>
         {s.verify_token && <p className="mt-1.5 text-[11px] text-slate-400">Verify token: <code>{s.verify_token}</code> (set in Netlify env as META_VERIFY_TOKEN)</p>}
@@ -202,9 +202,9 @@ export function MetaCard() {
         <pre className="mt-3 max-h-32 overflow-auto rounded-lg bg-slate-900 p-3 text-[11px] text-slate-200">{JSON.stringify(testResult, null, 2)}</pre>
       )}
       {syncResult && syncResult !== 'syncing' && (
-        <p className="mt-2 text-xs text-slate-500">{syncResult.error ? `Sync failed: ${syncResult.error}` : `Sync done — ${syncResult.processed} imported, ${syncResult.skipped} already in CRM`}</p>
+        <p className="mt-2 text-xs text-slate-400">{syncResult.error ? `Sync failed: ${syncResult.error}` : `Sync done — ${syncResult.processed} imported, ${syncResult.skipped} already in CRM`}</p>
       )}
-      <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-relaxed text-amber-800">
+      <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs leading-relaxed text-amber-200">
         <b>How quality signals work:</b> when an agent sets a disposition, ABA sends <code>Lead_Qualified</code> to Meta for <b>Signed/Approved</b>, and <code>Lead_Disqualified</code> with the reason for <b>Criteria Not Met</b> (age, work history, already receiving benefits…). Events Manager → Events → your pixel shows them as custom events. Tip: also switch your instant forms to "Higher intent" and add a Date of Birth question — that alone filters a big share of bad age leads.
       </div>
     </div>
@@ -243,18 +243,18 @@ export function DriveCard() {
       <div className="mb-4 flex items-center gap-2.5">
         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-white"><HardDrive size={18} /></div>
         <div>
-          <h2 className="text-sm font-bold text-slate-800">Google Drive — recordings storage</h2>
-          <p className="text-xs text-slate-500">Front-end & verification recordings upload straight into organized Drive folders.</p>
+          <h2 className="text-sm font-bold text-slate-100">Google Drive — recordings storage</h2>
+          <p className="text-xs text-slate-400">Front-end & verification recordings upload straight into organized Drive folders.</p>
         </div>
       </div>
       <div className="mb-4 flex flex-wrap gap-2">
-        <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${s.configured ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+        <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${s.configured ? 'bg-emerald-500/10 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
           {s.configured ? <CheckCircle2 size={13} /> : <XCircle size={13} />} {s.configured ? 'Connected' : 'Not configured'}
         </span>
-        {s.configured && s.service_account_email && <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600">Service account: {s.service_account_email}</span>}
+        {s.configured && s.service_account_email && <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-800 px-2 py-1 text-xs text-slate-300">Service account: {s.service_account_email}</span>}
       </div>
-      <div className="mb-4 space-y-2 rounded-xl bg-slate-50 p-4 text-xs leading-relaxed text-slate-600">
-        <p className="font-semibold text-slate-700">One-time setup (~10 min):</p>
+      <div className="mb-4 space-y-2 rounded-xl bg-slate-800/70 p-4 text-xs leading-relaxed text-slate-300">
+        <p className="font-semibold text-slate-200">One-time setup (~10 min):</p>
         <p>1. Go to <b>console.cloud.google.com</b> → create a project → enable the <b>Google Drive API</b>.</p>
         <p>2. IAM &amp; Admin → Service Accounts → <b>Create service account</b> (no special roles needed) → Keys → <b>Add key → JSON</b>. Download the JSON.</p>
         <p>3. In Google Drive, create a folder like <b>"CRM Recordings"</b> → Share it with the service account's email (found in the JSON) as <b>Editor</b>.</p>
