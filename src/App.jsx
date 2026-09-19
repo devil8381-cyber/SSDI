@@ -28,8 +28,18 @@ function Boot() {
 }
 
 // Per-route error boundary: a crash on one page never blanks the whole app.
+// Stale-code crashes (dev server died mid-session, old chunks after a deploy)
+// recover perfectly with one clean reload — do that automatically once before
+// ever showing the box, so the user usually never sees an error at all.
 function RouteError() {
   const error = useRouteError()
+  const stamp = `aba_autoreload:${window.location.pathname}`
+  const last = Number(sessionStorage.getItem(stamp) || 0)
+  if (Date.now() - last > 60000) {
+    sessionStorage.setItem(stamp, String(Date.now()))
+    window.location.reload()
+    return null
+  }
   return (
     <Layout>
       <div className="card mx-auto mt-10 max-w-md p-8 text-center">

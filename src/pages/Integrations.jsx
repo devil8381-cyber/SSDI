@@ -17,7 +17,7 @@ export default function Integrations() {
 }
 
 // ── Google Sheets auto-import ─────────────────────────────────
-function SheetsCard() {
+export function SheetsCard() {
   const toast = useToast()
   const [f, setF] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -107,7 +107,7 @@ function SheetsCard() {
   )
 }
 
-function MetaCard() {
+export function MetaCard() {
   const toast = useToast()
   const [s, setS] = useState(null)
   const [form, setForm] = useState({})
@@ -209,7 +209,7 @@ function MetaCard() {
   )
 }
 
-function DriveCard() {
+export function DriveCard() {
   const toast = useToast()
   const [s, setS] = useState(null)
   const [form, setForm] = useState({ service_account_json: '', root_folder_id: '' })
