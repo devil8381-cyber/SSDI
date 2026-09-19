@@ -116,7 +116,7 @@ function MetaCard() {
   const [syncResult, setSyncResult] = useState(null)
 
   const load = () => api('/meta/settings').then((d) => { setS(d); setForm({ pixel_id: d.pixel_id, page_id: d.page_id, test_event_code: d.test_event_code, capi_token: '', page_token: '', app_secret: '' }) }).catch((e) => toast(e.message, 'error'))
-  useEffect(load, [])
+  useEffect(() => { load() }, [])
 
   if (!s) return <div className="card flex justify-center py-16"><Spinner className="h-7 w-7" /></div>
 
