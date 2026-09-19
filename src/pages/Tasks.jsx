@@ -6,6 +6,7 @@ import { useAuth } from '../auth'
 import { useAction } from '../lib/hooks'
 import { maxLen, sanitizeText } from '../lib/validate'
 import { useToast, Modal, Empty, Spinner, PageError, fmtDateTime, leadName } from '../ui'
+import { dualCallback } from '../lib/tz'
 import { TASK_TYPES } from '../config'
 
 export default function Tasks() {
@@ -74,7 +75,7 @@ export default function Tasks() {
                   <p className="text-xs text-slate-400">
                     {t.leads ? <>Lead: <Link className="text-brand-400 hover:underline" to={`/leads/${t.leads.id}`}>{leadName(t.leads)}</Link> · </> : null}
                     {t.profiles ? <>for {t.profiles?.name} · </> : null}
-                    <span className={isOverdue(t) ? 'font-semibold text-rose-500' : ''}>{t.due_at ? `due ${fmtDateTime(t.due_at)}` : 'no due date'}</span>
+                    <span className={isOverdue(t) ? 'font-semibold text-rose-500' : ''}>{t.due_at ? (t.customer_tz ? dualCallback(t.due_at, t.customer_tz) : `due ${fmtDateTime(t.due_at)}`) : 'no due date'}</span>
                   </p>
                 </div>
                 <span className="rounded-md bg-slate-800 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-400">{(t.type || 'other').replace('_', ' ')}</span>

@@ -306,7 +306,7 @@ route('GET', 'dashboard', async ({ req }) => {
   }
 
   const endOfDay = todayK + 'T23:59:59'
-  const fuTaskQ = service.from('tasks').select('id,title,type,due_at,lead_id,leads(first_name,last_name,phone)').eq('status', 'open').lte('due_at', endOfDay).order('due_at').limit(10)
+  const fuTaskQ = service.from('tasks').select('id,title,type,due_at,customer_tz,lead_id,leads(first_name,last_name,phone)').eq('status', 'open').lte('due_at', endOfDay).order('due_at').limit(10)
   if (!admin) fuTaskQ.eq('assigned_to', me)
   const { data: dueTasks } = await fuTaskQ
 
@@ -418,18 +418,55 @@ route('GET', 'tasks', async ({ req, query }) => {
   const { data } = await q
   return json({ tasks: data || [] })
 })
+// ── server time (timezone clocks sync against THIS, not the device clock) ──
+route('GET', 'time', async () => json({ now: new Date().toISOString() }))
 route('POST', 'tasks', async ({ req, body }) => {
   const s = await getSession(req)
   if (!s) return unauthorized()
   const assigned = isAdmin(s.profile) ? body.assigned_to || s.user.id : s.user.id
+  const tz = body.customer_tz || null
+  if (tz) {
+    try { new Intl.DateTimeFormat('en', { timeZone: tz }) } catch { return fail('Unknown timezone') }
+  }
+  let dueAt = body.due_at || null
+  if (body.type === 'callback') {
+    if (!dueAt) return fail('Pick a date and time for the callback')
+    // Compare against REAL server UTC time — never a client clock.
+    if (new Date(dueAt).getTime() <= Date.now()) return fail('That callback time is already in the past (checked against server time)')
+  }
   const { data, error } = await service.from('tasks').insert({
     title: body.title, notes: body.notes || null, type: body.type || 'callback',
     lead_id: body.lead_id || null, assigned_to: assigned, created_by: s.user.id,
-    due_at: body.due_at || null,
+    due_at: dueAt, customer_tz: tz,
   }).select('*, leads(id,first_name,last_name,phone,disposition)').single()
-  if (error) return fail(error.message)
-  if (data.lead_id) await import('./_lib.mjs').then((m) => m.logActivity(data.lead_id, s.user.id, 'task', `✔ Task created: ${data.title}`))
-  return json({ task: data })
+  if (error) {
+    // Pre-migration DBs lack the customer_tz column — degrade gracefully.
+    if (tz && /customer_tz/i.test(error.message || '')) {
+      const r2 = await service.from('tasks').insert({
+        title: body.title, notes: body.notes || null, type: body.type || 'callback',
+        lead_id: body.lead_id || null, assigned_to: assigned, created_by: s.user.id,
+        due_at: dueAt,
+      }).select('*, leads(id,first_name,last_name,phone,disposition)').single()
+      if (r2.error) return fail(r2.error.message)
+      return finishTask(r2.data)
+    }
+    return fail(error.message)
+  }
+  return finishTask(data)
+
+  async function finishTask(task) {
+    if (task.lead_id) await import('./_lib.mjs').then((m) => m.logActivity(task.lead_id, s.user.id, 'task', `✔ Task created: ${task.title}`))
+    // Scheduled callback → notify the agent in IST, restating the customer's local time.
+    if (task.type === 'callback' && task.due_at) {
+      try {
+        const m = await import('./_lib.mjs')
+        const leadName = task.leads ? [task.leads.first_name, task.leads.last_name].filter(Boolean).join(' ') : task.title
+        const text = m.callbackNotifyText(leadName, task.due_at, task.customer_tz)
+        await m.notify([task.assigned_to], '📅 Callback scheduled', text, task.lead_id || null)
+      } catch {}
+    }
+    return json({ task })
+  }
 })
 route('PATCH', 'tasks/:id', async ({ req, params, body }) => {
   const s = await getSession(req)
@@ -450,6 +487,20 @@ route('PATCH', 'tasks/:id', async ({ req, params, body }) => {
     await import('./_lib.mjs').then((m) => m.logActivity(data.lead_id, s.user.id, 'task', body.status === 'done' ? `✔ Task completed: ${data.title}` : `↩ Task reopened: ${data.title}`))
   }
   return json({ task: data })
+})
+// ── my scheduled callbacks due within the next 45 minutes (reminder polling) ──
+// Pure UTC math against the stored absolute timestamp — never string compares.
+route('GET', 'callbacks/upcoming', async ({ req }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  const now = new Date()
+  const soon = new Date(now.getTime() + 45 * 60000)
+  const { data } = await service.from('tasks')
+    .select('id,title,due_at,customer_tz,lead_id,leads(first_name,last_name)')
+    .eq('assigned_to', s.user.id).eq('status', 'open').eq('type', 'callback')
+    .gte('due_at', now.toISOString()).lte('due_at', soon.toISOString())
+    .order('due_at').limit(10)
+  return json({ callbacks: data || [] })
 })
 route('DELETE', 'tasks/:id', async ({ req, params }) => {
   const s = await getSession(req)

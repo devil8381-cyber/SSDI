@@ -137,6 +137,25 @@ export async function sendLeadEmail({ lead, agent, subject, html, purpose, baseU
   return { id, messageId: info.messageId, profile: prof.name }
 }
 
+// ── timezone helpers (server twin of src/lib/tz.js — Intl-based, DST-aware) ──
+export const IST_TZ = 'Asia/Kolkata'
+export function tzAbbrAt(date, tz) {
+  if (tz === 'Asia/Kolkata') return 'IST'
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'short' }).formatToParts(date)
+  return parts.find((p) => p.type === 'timeZoneName')?.value || ''
+}
+export function dateInTz(date, tz) {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
+  }).format(date) + ' ' + tzAbbrAt(date, tz)
+}
+export function callbackNotifyText(leadName, dueIso, customerTz) {
+  const due = new Date(dueIso)
+  const mine = `${dateInTz(due, IST_TZ)} (your time)`
+  const theirs = customerTz && customerTz !== IST_TZ ? ` — ${dateInTz(due, customerTz)} their time` : ''
+  return `Callback with ${leadName} at ${mine}${theirs}`
+}
+
 export function leadVars(lead, agent) {
   const age = lead.dob ? Math.floor((Date.now() - new Date(lead.dob)) / 31557600000) : ''
   return {
@@ -338,10 +357,10 @@ export async function buildQueueFor(profile) {
 
   const items = []
   const seen = new Set()
-  const push = (l, reason, due_at) => {
+  const push = (l, reason, due_at, extra = {}) => {
     if (seen.has(l.id)) return
     seen.add(l.id)
-    items.push({ id: l.id, first_name: l.first_name, last_name: l.last_name, phone: l.phone, disposition: l.disposition, assigned_name: l.profiles?.name || null, reason, due_at })
+    items.push({ id: l.id, first_name: l.first_name, last_name: l.last_name, phone: l.phone, disposition: l.disposition, assigned_name: l.profiles?.name || null, reason, due_at, customer_tz: extra.customer_tz || null })
   }
 
   let overdue = 0, dueToday = 0
@@ -354,13 +373,13 @@ export async function buildQueueFor(profile) {
     if (d >= dayStart && d <= dayEnd) { push(l, 'Callback due today', l.next_followup_at); dueToday++ }
   }
 
-  let tq = service.from('tasks').select('id,title,due_at,lead_id').eq('status', 'open').lte('due_at', dayEnd.toISOString()).order('due_at').limit(200)
+  let tq = service.from('tasks').select('id,title,due_at,customer_tz,lead_id').eq('status', 'open').lte('due_at', dayEnd.toISOString()).order('due_at').limit(200)
   if (!admin) tq = tq.eq('assigned_to', profile.id)
   const { data: tasks } = await tq
   const byId = new Map(visible.map((l) => [l.id, l]))
   for (const t of tasks || []) {
     const l = t.lead_id ? byId.get(t.lead_id) : null
-    if (l) push(l, `Task: ${t.title}`, t.due_at)
+    if (l) push(l, `Task: ${t.title}`, t.due_at, { customer_tz: t.customer_tz })
   }
 
   // fresh leads: oldest untouched first (admin also sees the unassigned pool)

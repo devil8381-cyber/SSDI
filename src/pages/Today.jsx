@@ -5,6 +5,7 @@ import { api, describeError } from '../api'
 import { getCallHref } from '../lib/call'
 import { useAction } from '../lib/hooks'
 import { useToast, Empty, PageError, Spinner, DispositionBadge, fmtDateTime } from '../ui'
+import { dualCallback } from '../lib/tz'
 
 const REASON_ORDER = ['Overdue follow-up', 'Callback due today', 'Fresh lead']
 const REASON_STYLES = {
@@ -76,7 +77,7 @@ export default function Today() {
                     {g.reason.startsWith('Task:') && <span className="text-xs text-slate-400">{g.reason.slice(6)}</span>}
                   </p>
                   <p className="text-xs text-slate-400">
-                    {i.due_at ? <>due {fmtDateTime(i.due_at)} · </> : null}
+                    {i.due_at ? <>{i.customer_tz ? dualCallback(i.due_at, i.customer_tz) + ' · ' : <>due {fmtDateTime(i.due_at)} · </>}</> : null}
                     {i.assigned_name ? `agent: ${i.assigned_name}` : 'unassigned'}
                   </p>
                 </div>

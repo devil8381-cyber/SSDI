@@ -10,6 +10,7 @@ import { useAction, useDirtyGuard } from '../lib/hooks'
 import { validateForm, emailRule, phoneRule, maxLen, sanitizeText } from '../lib/validate'
 import { renderTemplate } from '../lib/render'
 import { getCallHref } from '../lib/call'
+import { dualCallback, zonedToUtc, timeInTz, dateInTz, IST, SCHED_ZONES } from '../lib/tz'
 import { useToast, Modal, Spinner, Empty, PageError, DispositionBadge, fmtDateTime, ageFrom } from '../ui'
 import { DISPOSITIONS, CRITERIA_REASONS, STATES, DOC_TYPES, SMTP_PURPOSES, TASK_TYPES, INTAKE_SECTIONS } from '../config'
 
@@ -181,10 +182,15 @@ export default function LeadDetail() {
     navigate('/leads')
   }, { toast, successMsg: 'Lead deleted' })
 
-  const { run: addTask, busy: addingTask } = useAction(async (title, due_at, type) => {
+  const { run: addTask, busy: addingTask } = useAction(async (payload) => {
     await api('/tasks', {
       method: 'POST',
-      body: { title, lead_id: id, due_at: toUtcIso(due_at), type: type || 'callback', assigned_to: data.lead.assigned_to || profile.id },
+      body: {
+        title: payload.title, lead_id: id, type: payload.type || 'callback',
+        due_at: payload.customer_tz ? payload.due_at : toUtcIso(payload.due_at),
+        customer_tz: payload.customer_tz || null,
+        assigned_to: data.lead.assigned_to || profile.id,
+      },
     })
   }, { toast, successMsg: 'Task added', onDone: load })
 
@@ -352,7 +358,7 @@ export default function LeadDetail() {
                     </button>
                     <div className="min-w-0 flex-1">
                       <p className={`truncate text-sm ${t.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-200'}`}>{t.title}</p>
-                      <p className="text-[11px] text-slate-400">{t.type}{t.due_at ? ` · due ${fmtDateTime(t.due_at)}` : ''} · {t.profiles?.name || 'unassigned'}</p>
+                      <p className="text-[11px] text-slate-400">{t.type}{t.due_at ? ` · ${t.customer_tz ? dualCallback(t.due_at, t.customer_tz) : `due ${fmtDateTime(t.due_at)}`}` : ''} · {t.profiles?.name || 'unassigned'}</p>
                     </div>
                   </div>
                 ))}
@@ -846,24 +852,49 @@ function QuickTask({ onAdd, busy }) {
   const [title, setTitle] = useState('')
   const [due, setDue] = useState('')
   const [type, setType] = useState('callback')
+  // callback scheduling: date + time + the CUSTOMER's timezone (IANA id stored)
+  const [cbDate, setCbDate] = useState('')
+  const [cbTime, setCbTime] = useState('')
+  const [tz, setTz] = useState('America/New_York')
+  const isCb = type === 'callback'
+  const cbReady = isCb && cbDate && cbTime
+  const dueIso = cbReady ? zonedToUtc(cbDate, cbTime, tz).toISOString() : null
   const submit = () => {
     if (busy || !title.trim()) return
-    onAdd(title.trim(), due, type)
-    setTitle(''); setDue(''); setOpen(false)
+    if (isCb && !cbReady) return
+    onAdd({ title: title.trim(), due_at: isCb ? dueIso : due, type, customer_tz: isCb ? tz : null })
+    setTitle(''); setDue(''); setCbDate(''); setCbTime(''); setOpen(false)
   }
   return (
     <div className="relative">
       <button className="btn-ghost !py-1.5 text-xs" onClick={() => setOpen((o) => !o)}><Plus size={13} /> Add task</button>
       {open && (
-        <div className="absolute right-0 z-20 mt-2 w-72 space-y-2 rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-xl">
-          <input className="input" autoFocus placeholder="Task title…" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
+        <div className="absolute right-0 z-20 mt-2 w-80 space-y-2 rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-xl">
+          <input className="input" autoFocus placeholder={isCb ? 'e.g. Scheduled callback — discuss file' : 'Task title…'} value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
           <div className="flex gap-2">
             <select className="input" value={type} onChange={(e) => setType(e.target.value)}>
               {TASK_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
-            <input className="input" type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} />
+            {!isCb && <input className="input" type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} />}
           </div>
-          <button className="btn-primary w-full !py-1.5 text-xs" onClick={submit} disabled={busy || !title.trim()}>{busy ? 'Adding…' : 'Add task'}</button>
+          {isCb && (
+            <>
+              <div className="flex gap-2">
+                <input className="input" type="date" value={cbDate} onChange={(e) => setCbDate(e.target.value)} title="Date in the customer's timezone" />
+                <input className="input" type="time" value={cbTime} onChange={(e) => setCbTime(e.target.value)} title="Time in the customer's timezone" />
+              </div>
+              <select className="input" value={tz} onChange={(e) => setTz(e.target.value)} title="The customer's timezone">
+                {SCHED_ZONES.map((z) => <option key={z.tz} value={z.tz}>{z.label}</option>)}
+              </select>
+              {/* live dual-timezone preview — updates the moment any field changes */}
+              {cbReady && (
+                <p className="rounded-lg bg-brand-500/10 p-2 text-[11px] leading-relaxed text-brand-200">
+                  This will be <b>{timeInTz(new Date(dueIso), tz)}</b> for the customer — which is <b>{dateInTz(new Date(dueIso), IST)}</b> in your time.
+                </p>
+              )}
+            </>
+          )}
+          <button className="btn-primary w-full !py-1.5 text-xs" onClick={submit} disabled={busy || !title.trim() || (isCb && !cbReady)}>{busy ? 'Adding…' : isCb ? 'Schedule callback' : 'Add task'}</button>
         </div>
       )}
     </div>

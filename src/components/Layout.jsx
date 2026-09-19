@@ -7,6 +7,7 @@ import {
 import { api } from '../api'
 import { useAuth } from '../auth'
 import { useOnline, useDebounced } from '../lib/hooks'
+import { dualCallback } from '../lib/tz'
 import { setCallConfig } from '../lib/call'
 import { fmtDateTime, leadName, DispositionBadge, useToast } from '../ui'
 
@@ -43,6 +44,27 @@ export default function Layout({ children }) {
     window.addEventListener('aba:browser-reload', onReloaded)
     return () => window.removeEventListener('aba:browser-reload', onReloaded)
   }, [toast])
+
+  // Callback reminders: server computes which of MY callbacks are due within
+  // 45 min (pure UTC math); each one toasts exactly once, with dual timezones.
+  const reminded = useRef(new Set())
+  useEffect(() => {
+    const poll = async () => {
+      if (document.hidden || !online) return
+      try {
+        const d = await api('/callbacks/upcoming')
+        for (const c of d.callbacks || []) {
+          if (reminded.current.has(c.id)) continue
+          reminded.current.add(c.id)
+          const name = c.leads ? [c.leads.first_name, c.leads.last_name].filter(Boolean).join(' ') : c.title
+          toast(`📅 Callback ${dualCallback(c.due_at, c.customer_tz)} — ${name}`)
+        }
+      } catch { /* silent — the next poll retries */ }
+    }
+    poll()
+    const iv = setInterval(poll, 60000)
+    return () => clearInterval(iv)
+  }, [online, toast])
 
   // click-to-call config (which app opens on phone-number clicks)
   useEffect(() => {

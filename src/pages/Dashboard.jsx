@@ -6,6 +6,8 @@ import { useAuth } from '../auth'
 import { useAction } from '../lib/hooks'
 import { StatCard, Empty, Bars, PageError, fmtDateTime, fmtDuration, leadName, DispositionBadge, Spinner, useToast } from '../ui'
 import { DISPOSITIONS } from '../config'
+import WorldClocks from '../components/WorldClocks'
+import { dualCallback } from '../lib/tz'
 
 export default function Dashboard() {
   const { profile } = useAuth()
@@ -31,6 +33,7 @@ export default function Dashboard() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
+      <WorldClocks />
       <div>
         <h1 className="text-xl font-bold text-slate-100">
           {data.role === 'admin' ? 'Company Overview' : `Welcome back, ${profile?.name?.split(' ')[0]}`}
@@ -87,7 +90,7 @@ export default function Dashboard() {
           {d.dueLeads.length === 0 && d.dueTasks.length === 0 && <p className="py-4 text-center text-sm text-slate-400">Nothing due — nice work 🎉</p>}
           <div className="space-y-2">
             {d.dueLeads.map((l) => (
-              <Link key={l.id} to={`/leads/${l.id}`} className="flex items-center justify-between rounded-lg border border-slate-800 px-3 py-2 hover:border-brand-500/30 hover:bg-brand-500/10/40">
+              <Link key={l.id} to={`/leads/${l.id}`} className="flex items-center justify-between rounded-lg border border-slate-800 px-3 py-2 hover:border-brand-500/30 hover:bg-brand-500/10">
                 <div>
                   <p className="text-sm font-medium text-slate-200">{leadName(l)}</p>
                   <p className="text-xs text-slate-400">{fmtDateTime(l.next_followup_at)}</p>
@@ -96,10 +99,10 @@ export default function Dashboard() {
               </Link>
             ))}
             {d.dueTasks.map((t) => (
-              <Link key={'t' + t.id} to={t.lead_id ? `/leads/${t.lead_id}` : '/tasks'} className="flex items-center justify-between rounded-lg border border-slate-800 px-3 py-2 hover:border-brand-500/30 hover:bg-brand-500/10/40">
+              <Link key={'t' + t.id} to={t.lead_id ? `/leads/${t.lead_id}` : '/tasks'} className="flex items-center justify-between rounded-lg border border-slate-800 px-3 py-2 hover:border-brand-500/30 hover:bg-brand-500/10">
                 <div>
                   <p className="text-sm font-medium text-slate-200">{t.title}</p>
-                  <p className="text-xs text-slate-400">{t.type} · {t.leads ? leadName(t.leads) : 'no lead'}</p>
+                  <p className="text-xs text-slate-400">{t.type} · {t.leads ? leadName(t.leads) : 'no lead'}{t.due_at ? <span className="block text-[11px]">{t.customer_tz ? dualCallback(t.due_at, t.customer_tz) : fmtDateTime(t.due_at)}</span> : null}</p>
                 </div>
                 <ArrowRight size={14} className="text-slate-300" />
               </Link>
