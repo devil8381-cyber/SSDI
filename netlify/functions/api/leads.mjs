@@ -2,6 +2,7 @@ import { route } from './_router.mjs'
 import {
   service, json, fail, getSession, unauthorized, logActivity, notify, adminIds,
   sendCapi, metaSecrets, getSetting, DISPOSITIONS, LEAD_SOURCES, pickAgentRoundRobin,
+  applyFollowupRules, buildQueueFor, sendSystemEmail, baseUrl,
 } from './_lib.mjs'
 
 const isAdmin = (p) => p?.role === 'admin'
@@ -227,7 +228,10 @@ route('PATCH', 'leads/:id', async ({ req, params, body, context }) => {
   if (error) return fail(error.message)
   await logActivity(lead.id, s.user.id, activityType, activityTitle, { from: lead.disposition, to: patch.disposition })
 
-  if (activityType === 'disposition') context.waitUntil(fireMetaSignal(context, updated, patch.disposition, patch.disposition_reason))
+  if (activityType === 'disposition') {
+    context.waitUntil(fireMetaSignal(context, updated, patch.disposition, patch.disposition_reason))
+    context.waitUntil(applyFollowupRules(updated, patch.disposition))
+  }
   return json({ lead: updated })
 })
 
@@ -382,10 +386,43 @@ route('POST', 'leads/bulk-disposition', async ({ req, body, context }) => {
   if (firing.length) {
     context.waitUntil((async () => {
       for (const l of firing) {
-        try { await fireMetaSignal(context, l, l.disposition, l.disposition_reason) } catch (e) { console.error('bulk meta signal failed', e) }
+        try {
+          await fireMetaSignal(context, l, l.disposition, l.disposition_reason)
+          await applyFollowupRules(l, l.disposition)
+        } catch (e) { console.error('bulk post-processing failed', e) }
       }
     })())
   }
   return json({ ok: true, count: scoped.length })
+})
+
+// ── daily queue ("Today" page) ────────────────────────────────
+route('GET', 'queue', async ({ req }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  const q = await buildQueueFor(s.profile)
+  return json(q)
+})
+
+// email myself today's plan
+route('POST', 'queue/email', async ({ req, url }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  const q = await buildQueueFor(s.profile)
+  if (!q.items.length) return fail('Your queue is empty — nothing to send')
+  const rows = q.items.slice(0, 20).map((i) =>
+    `<li><b>${i.first_name} ${i.last_name}</b> — ${i.reason}${i.due_at ? ` (due ${new Date(i.due_at).toLocaleString()})` : ''} — ${i.phone || 'no phone'}</li>`
+  ).join('')
+  const html = `
+    <h2>Your LeadDesk plan for today</h2>
+    <p><b>${q.counts.total}</b> leads in your queue: ${q.counts.overdue} overdue, ${q.counts.dueToday} due today, ${q.counts.fresh} fresh.</p>
+    <ol>${rows}</ol>
+    <p><a href="${baseUrl(url)}">Open LeadDesk</a></p>`
+  try {
+    await sendSystemEmail({ to: s.profile.email || s.user.email, subject: `LeadDesk — ${q.counts.total} leads on today's plan`, html })
+  } catch (e) {
+    return fail(e.message, 400)
+  }
+  return json({ ok: true, sent: Math.min(20, q.items.length) })
 })
 

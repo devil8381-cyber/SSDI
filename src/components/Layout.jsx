@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users2, ClipboardList, FileText, MessageSquareText, ScrollText,
-  UserCog, Plug, Send, Bell, LogOut, Menu, X, Headphones, WifiOff, Search, Zap, Phone,
+  UserCog, Plug, Send, Bell, LogOut, Menu, X, Headphones, WifiOff, Search, Zap, Phone, Sunrise,
 } from 'lucide-react'
 import { api } from '../api'
 import { useAuth } from '../auth'
@@ -11,6 +11,7 @@ import { fmtDateTime, leadName, DispositionBadge } from '../ui'
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/today', label: 'Today', icon: Sunrise },
   { to: '/leads', label: 'Leads', icon: Users2 },
   { to: '/tasks', label: 'Tasks', icon: ClipboardList },
   { to: '/documents', label: 'Documents', icon: FileText },

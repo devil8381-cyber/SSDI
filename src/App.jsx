@@ -5,6 +5,7 @@ import { useAuth } from './auth'
 import { useToast, Spinner } from './ui'
 import Layout from './components/Layout'
 import Login from './pages/Login'
+import Today from './pages/Today'
 import Dashboard from './pages/Dashboard'
 import Leads from './pages/Leads'
 import LeadDetail from './pages/LeadDetail'
@@ -118,6 +119,7 @@ const router = createBrowserRouter([
     errorElement: <RouteError />,
     children: [
       { path: '/', element: <Dashboard /> },
+      { path: '/today', element: <Today /> },
       { path: '/leads', element: <Leads /> },
       { path: '/leads/:id', element: <LeadDetail />, errorElement: <RouteError /> },
       { path: '/tasks', element: <Tasks /> },

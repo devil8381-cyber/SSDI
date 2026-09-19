@@ -253,7 +253,19 @@ export default function Leads() {
                         </td>
                       )}
                       <td className="td">
-                        <p className="font-medium text-slate-800">{leadName(r)}</p>
+                        <p className="font-medium text-slate-800">
+                          <span
+                            className={`mr-1.5 inline-block h-2 w-2 rounded-full align-middle ${
+                              (() => {
+                                // aging dot: how long since anyone touched this lead
+                                const days = Math.floor((Date.now() - new Date(r.last_activity_at || r.created_at).getTime()) / 86400000)
+                                return days <= 3 ? 'bg-emerald-500' : days <= 7 ? 'bg-amber-400' : 'bg-rose-500'
+                              })()
+                            }`}
+                            title={`Last touched ${Math.floor((Date.now() - new Date(r.last_activity_at || r.created_at).getTime()) / 86400000)} day(s) ago`}
+                          />
+                          {leadName(r)}
+                        </p>
                         <p className="text-xs text-slate-400">{[r.city, r.state].filter(Boolean).join(', ') || r.email || '—'}</p>
                       </td>
                       <td className="td text-slate-600" onClick={(e) => e.stopPropagation()}>

@@ -1,7 +1,7 @@
 import { route } from './_router.mjs'
 import {
   service, json, fail, getSession, unauthorized, notify, today, dbConfigured,
-  getSetting, setSetting,
+  getSetting, setSetting, isoDayStart, DISPOSITIONS, DEFAULT_FOLLOWUP_RULES,
 } from './_lib.mjs'
 
 const isAdmin = (p) => p?.role === 'admin'
@@ -75,6 +75,52 @@ route('PUT', 'settings/auto-assign', async ({ req, body }) => {
   if (!['off', 'round_robin'].includes(body.mode)) return fail('Mode must be "off" or "round_robin"')
   await setSetting('auto_assign', { mode: body.mode, updated_at: new Date().toISOString() })
   return json({ ok: true, mode: body.mode })
+})
+
+// ── follow-up rules (disposition → auto-task) ─────────────────
+route('GET', 'settings/followup-rules', async ({ req }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  const rules = (await getSetting('followup_rules')) || DEFAULT_FOLLOWUP_RULES
+  return json({ rules })
+})
+
+route('PUT', 'settings/followup-rules', async ({ req, body }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  const rules = (Array.isArray(body.rules) ? body.rules : [])
+    .filter((r) => r && DISPOSITIONS.includes(r.disposition) && String(r.title || '').trim() && Number(r.days) >= 0 && Number(r.days) <= 30)
+    .slice(0, 20)
+    .map((r) => ({
+      disposition: r.disposition,
+      title: String(r.title).trim().slice(0, 200),
+      days: Number(r.days),
+      type: ['callback', 'followup', 'doc_request', 'other'].includes(r.type) ? r.type : 'callback',
+    }))
+  await setSetting('followup_rules', rules)
+  return json({ ok: true, rules })
+})
+
+// ── daily targets ─────────────────────────────────────────────
+route('GET', 'settings/targets', async ({ req }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  return json({ targets: (await getSetting('targets')) || { calls: 40, dispositions: 10 } })
+})
+
+route('PUT', 'settings/targets', async ({ req, body }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  const targets = {
+    calls: Math.max(0, Math.min(500, Number(body.calls) || 0)),
+    dispositions: Math.max(0, Math.min(500, Number(body.dispositions) || 0)),
+  }
+  await setSetting('targets', targets)
+  return json({ ok: true, targets })
 })
 
 // ── me ────────────────────────────────────────────────────────
@@ -168,7 +214,33 @@ route('GET', 'dashboard', async ({ req }) => {
       }
     })
     out.team = team
+
+    // admin escalation panel: assigned leads nobody touched in 7+ days
+    const cutoff7 = new Date(Date.now() - 7 * 86400000).toISOString()
+    const { data: att } = await service.from('leads')
+      .select('id,first_name,last_name,disposition,last_activity_at,created_at,assigned_to,profiles!leads_assigned_to_fkey(name)')
+      .lt('created_at', cutoff7)
+      .or(`last_activity_at.is.null,last_activity_at.lt.${cutoff7}`)
+      .not('disposition', 'in', '("Signed","Approved")')
+      .not('assigned_to', 'is', null)
+      .order('last_activity_at', { ascending: true, nullsFirst: true })
+      .limit(10)
+    out.attention = att || []
   }
+
+  // daily-target progress (agent's own activity today)
+  const targets = (await getSetting('targets')) || { calls: 40, dispositions: 10 }
+  const { data: actsToday } = await service.from('activities')
+    .select('type,title').eq('user_id', me).gte('created_at', isoDayStart()).limit(2000)
+  const { count: tasksDoneToday } = await service.from('tasks')
+    .select('id', { count: 'exact', head: true }).eq('assigned_to', me).gte('completed_at', isoDayStart())
+  out.todayActivity = {
+    calls: (actsToday || []).filter((a) => a.type === 'note' && (a.title || '').startsWith('📞')).length,
+    dispositions: (actsToday || []).filter((a) => a.type === 'disposition').length,
+    tasksDone: tasksDoneToday || 0,
+  }
+  out.targets = targets
+
   return json(out)
 })
 

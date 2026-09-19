@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Users2, Trophy, BadgeCheck, Percent, PhoneCall, Mail, Clock, ArrowRight } from 'lucide-react'
+import { Users2, Trophy, BadgeCheck, Percent, PhoneCall, Mail, Clock, ArrowRight, Target, AlertTriangle } from 'lucide-react'
 import { api, describeError } from '../api'
 import { useAuth } from '../auth'
-import { StatCard, Empty, Bars, PageError, fmtDateTime, fmtDuration, leadName, DispositionBadge, Spinner } from '../ui'
+import { useAction } from '../lib/hooks'
+import { StatCard, Empty, Bars, PageError, fmtDateTime, fmtDuration, leadName, DispositionBadge, Spinner, useToast } from '../ui'
 import { DISPOSITIONS } from '../config'
 
 export default function Dashboard() {
@@ -166,6 +167,78 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {d.attention && d.attention.length > 0 && <AttentionPanel items={d.attention} onDone={load} />}
+      {d.targets && (d.targets.calls > 0 || d.targets.dispositions > 0) && <TargetsPanel activity={d.todayActivity} targets={d.targets} />}
+    </div>
+  )
+}
+
+// ── admin: leads going cold — reassign in one click ───────────
+function AttentionPanel({ items, onDone }) {
+  const toast = useToast()
+  const [agents, setAgents] = useState([])
+  const [picked, setPicked] = useState({})
+  useEffect(() => { api('/users/agents').then((d) => setAgents((d.users || []).filter((u) => u.role === 'agent'))).catch(() => {}) }, [])
+  const { run: reassign, busy } = useAction(async (leadId) => {
+    if (!picked[leadId]) throw new Error('Pick an agent first')
+    await api(`/leads/${leadId}`, { method: 'PATCH', body: { assigned_to: picked[leadId] } })
+  }, { toast, successMsg: 'Lead reassigned', onDone })
+  const untouched = (l) => Math.floor((Date.now() - new Date(l.last_activity_at || l.created_at).getTime()) / 86400000)
+  return (
+    <div className="card overflow-hidden border-amber-200">
+      <div className="flex items-center gap-2 border-b border-amber-100 bg-amber-50 px-5 py-3">
+        <AlertTriangle size={15} className="text-amber-600" />
+        <h2 className="text-sm font-semibold text-amber-800">Needs attention — untouched for 7+ days</h2>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {items.map((l) => (
+          <div key={l.id} className="flex flex-wrap items-center gap-2 px-5 py-2.5">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-slate-800">
+                <Link className="hover:text-brand-600 hover:underline" to={`/leads/${l.id}`}>{leadName(l)}</Link>
+                {'  '}<DispositionBadge value={l.disposition} />
+              </p>
+              <p className="text-[11px] text-slate-400">{l.profiles?.name || 'unassigned'} · last touched {untouched(l)} days ago</p>
+            </div>
+            <select className="input w-auto !py-1.5 text-xs" value={picked[l.id] || ''} onChange={(e) => setPicked((p) => ({ ...p, [l.id]: e.target.value }))}>
+              <option value="">Reassign to…</option>
+              {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+            <button className="btn-ghost !py-1.5 text-xs" disabled={busy || !picked[l.id]} onClick={() => reassign(l.id)}>Apply</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── agent: daily target progress ──────────────────────────────
+function TargetsPanel({ activity, targets }) {
+  const rows = [
+    { label: 'Calls logged today', value: activity?.calls || 0, target: targets.calls },
+    { label: 'Dispositions set today', value: activity?.dispositions || 0, target: targets.dispositions },
+  ]
+  return (
+    <div className="card p-5">
+      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700"><Target size={15} className="text-brand-600" /> Daily targets</h2>
+      <div className="space-y-3">
+        {rows.map((r) => {
+          const pct = r.target ? Math.min(100, Math.round((r.value / r.target) * 100)) : 0
+          return (
+            <div key={r.label}>
+              <div className="mb-1 flex justify-between text-xs">
+                <span className="text-slate-600">{r.label}</span>
+                <span className="font-semibold text-slate-700">{r.value} / {r.target}</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className={`h-full rounded-full ${pct >= 100 ? 'bg-emerald-500' : 'bg-brand-500'}`} style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <p className="mt-3 text-xs text-slate-400">{activity?.calls || 0} calls · {activity?.dispositions || 0} dispositions · {activity?.tasksDone || 0} tasks done today. Targets are set by your admin under Automation.</p>
     </div>
   )
 }

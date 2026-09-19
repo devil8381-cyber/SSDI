@@ -303,3 +303,113 @@ export function baseUrl(url) {
 }
 export const today = () => new Date().toISOString().slice(0, 10)
 export const isoDayStart = () => new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z').toISOString()
+
+// ── follow-up rules engine ───────────────────────────────────
+// When an agent sets a disposition, these rules auto-create the NEXT task so
+// no lead ever goes silent. Admin-editable (settings.followup_rules).
+export const DEFAULT_FOLLOWUP_RULES = [
+  { disposition: 'VM', title: 'Call again — VM follow-up', days: 2, type: 'callback' },
+  { disposition: 'Callback', title: 'Callback as promised', days: 1, type: 'callback' },
+  { disposition: 'NIS', title: 'Retry call (NIS)', days: 1, type: 'callback' },
+  { disposition: 'Signed', title: 'Verification call', days: 1, type: 'callback' },
+]
+
+export async function applyFollowupRules(lead, disposition) {
+  try {
+    const rules = (await getSetting('followup_rules')) || DEFAULT_FOLLOWUP_RULES
+    const rule = (rules || []).find((r) => r && r.disposition === disposition && r.title && r.days != null)
+    if (!rule) return
+    const { data: existing } = await service.from('tasks')
+      .select('id').eq('lead_id', lead.id).eq('title', rule.title).eq('status', 'open').maybeSingle()
+    if (existing) return // don't stack duplicates of the same open auto-task
+    await service.from('tasks').insert({
+      title: rule.title, type: rule.type || 'callback', lead_id: lead.id,
+      assigned_to: lead.assigned_to || null,
+      due_at: new Date(Date.now() + Number(rule.days) * 86400000).toISOString(),
+    })
+    await logActivity(lead.id, null, 'task', `🗓 Auto-task created: ${rule.title} (due in ${rule.days} day${rule.days == 1 ? '' : 's'})`)
+  } catch (e) {
+    console.error('followup rule failed:', e)
+  }
+}
+
+// ── daily queue builder ──────────────────────────────────────
+// One prioritized work list per user: overdue follow-ups → callbacks due
+// today → open tasks due → fresh leads (oldest first, capped).
+export async function buildQueueFor(profile) {
+  const admin = profile.role === 'admin'
+  const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0)
+  const dayEnd = new Date(); dayEnd.setHours(23, 59, 59, 999)
+
+  const { data: leads } = await service.from('leads')
+    .select('id,first_name,last_name,phone,disposition,disposition_reason,next_followup_at,last_activity_at,created_at,assigned_to,profiles!leads_assigned_to_fkey(name)')
+    .neq('disposition', 'Signed').neq('disposition', 'Approved')
+    .order('created_at', { ascending: false })
+    .limit(5000)
+  const visible = (leads || []).filter((l) => admin || l.assigned_to === profile.id)
+
+  const items = []
+  const seen = new Set()
+  const push = (l, reason, due_at) => {
+    if (seen.has(l.id)) return
+    seen.add(l.id)
+    items.push({ id: l.id, first_name: l.first_name, last_name: l.last_name, phone: l.phone, disposition: l.disposition, assigned_name: l.profiles?.name || null, reason, due_at })
+  }
+
+  let overdue = 0, dueToday = 0
+  for (const l of visible) {
+    if (l.next_followup_at && new Date(l.next_followup_at) < dayStart) { push(l, 'Overdue follow-up', l.next_followup_at); overdue++ }
+  }
+  for (const l of visible) {
+    if (seen.has(l.id) || !l.next_followup_at) continue
+    const d = new Date(l.next_followup_at)
+    if (d >= dayStart && d <= dayEnd) { push(l, 'Callback due today', l.next_followup_at); dueToday++ }
+  }
+
+  let tq = service.from('tasks').select('id,title,due_at,lead_id').eq('status', 'open').lte('due_at', dayEnd.toISOString()).order('due_at').limit(200)
+  if (!admin) tq = tq.eq('assigned_to', profile.id)
+  const { data: tasks } = await tq
+  const byId = new Map(visible.map((l) => [l.id, l]))
+  for (const t of tasks || []) {
+    const l = t.lead_id ? byId.get(t.lead_id) : null
+    if (l) push(l, `Task: ${t.title}`, t.due_at)
+  }
+
+  // fresh leads: oldest untouched first (admin also sees the unassigned pool)
+  const fresh = visible
+    .filter((l) => !seen.has(l.id) && l.disposition === 'New')
+    .sort((a, b) => (a.created_at < b.created_at ? -1 : 1))
+    .slice(0, 15)
+  for (const l of fresh) push(l, 'Fresh lead', null)
+
+  return {
+    items,
+    counts: {
+      total: items.length,
+      overdue,
+      dueToday,
+      fresh: fresh.length,
+    },
+  }
+}
+
+// ── system email (digests/notifications, not lead follow-ups) ─
+export async function sendSystemEmail({ to, subject, html }) {
+  const { data: profiles } = await service.from('smtp_profiles').select('*').eq('is_active', true)
+  const prof = (profiles || []).find((p) => p.purpose === 'notifications')
+    || (profiles || []).find((p) => p.purpose === 'general')
+    || (profiles || [])[0]
+  if (!prof) throw new Error('No SMTP profile configured — add one under Admin → SMTP (purpose: System notifications)')
+  const pass = decrypt(prof.password_enc)
+  if (!pass) throw new Error('SMTP password could not be decrypted — re-enter it')
+  const transport = nodemailer.createTransport({
+    host: prof.host, port: prof.port, secure: !!prof.secure,
+    auth: { user: prof.username, pass },
+    connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 30000,
+  })
+  await transport.sendMail({
+    from: prof.from_name ? `"${prof.from_name}" <${prof.from_email}>` : prof.from_email,
+    to, subject, html,
+  })
+  return prof.name
+}

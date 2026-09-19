@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Repeat, Zap, Loader2 } from 'lucide-react'
+import { Repeat, Zap, Loader2, CalendarClock, Target, Plus, Trash2 } from 'lucide-react'
 import { api, describeError } from '../api'
 import { useAction } from '../lib/hooks'
 import { useToast, PageError } from '../ui'
@@ -11,9 +11,13 @@ export default function Automation() {
   const [mode, setMode] = useState(null)
   const [days, setDays] = useState(14)
   const [preview, setPreview] = useState(null)
+  const [rules, setRules] = useState(null)
+  const [targets, setTargets] = useState(null)
 
   useEffect(() => {
     api('/settings/auto-assign').then((d) => setMode(d.mode)).catch((e) => toast(describeError(e), 'error'))
+    api('/settings/followup-rules').then((d) => setRules(d.rules || [])).catch((e) => toast(describeError(e), 'error'))
+    api('/settings/targets').then((d) => setTargets(d.targets)).catch((e) => toast(describeError(e), 'error'))
   }, [])
 
   const { run: saveMode, busy: savingMode } = useAction(async (m) => {
@@ -78,6 +82,9 @@ export default function Automation() {
         </div>
       </div>
 
+      <RulesCard rules={rules} setRules={setRules} />
+      <TargetsCard targets={targets} setTargets={setTargets} />
+
       <div className="card p-6">
         <div className="mb-4 flex items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500 text-white"><Repeat size={18} /></div>
@@ -114,6 +121,83 @@ export default function Automation() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── follow-up rules editor ────────────────────────────────────
+function RulesCard({ rules, setRules }) {
+  const toast = useToast()
+  const { run: save, busy } = useAction(async () => {
+    if (rules.some((r) => !r.title.trim())) throw new Error('Every rule needs a task title.')
+    await api('/settings/followup-rules', { method: 'PUT', body: { rules } })
+  }, { toast, successMsg: 'Follow-up rules saved — they apply from the next disposition' })
+
+  const update = (i, patch) => setRules((rs) => rs.map((r, x) => (x === i ? { ...r, ...patch } : r)))
+
+  return (
+    <div className="card p-6">
+      <div className="mb-4 flex items-center gap-2.5">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white"><CalendarClock size={18} /></div>
+        <div>
+          <h2 className="text-sm font-bold text-slate-800">Follow-up rules</h2>
+          <p className="text-xs text-slate-500">When an agent sets one of these dispositions, LeadDesk automatically creates the next task — so no lead is ever forgotten.</p>
+        </div>
+      </div>
+      {!rules ? <p className="py-4 text-center text-sm text-slate-400">Loading…</p> : (
+        <div className="space-y-2">
+          {rules.map((r, i) => (
+            <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 p-2.5">
+              <select className="input w-auto !py-1.5 text-xs" value={r.disposition} onChange={(e) => update(i, { disposition: e.target.value })}>
+                {DISPOSITIONS.map((d) => <option key={d}>{d}</option>)}
+              </select>
+              <span className="text-xs text-slate-400">→</span>
+              <input className="input flex-1 !py-1.5 text-xs" placeholder="Auto-task title" value={r.title} onChange={(e) => update(i, { title: e.target.value })} />
+              <span className="text-xs text-slate-400">due in</span>
+              <input className="input w-16 !py-1.5 text-xs" type="number" min="0" max="30" value={r.days} onChange={(e) => update(i, { days: Number(e.target.value) })} />
+              <span className="text-xs text-slate-400">days</span>
+              <button className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-rose-500" onClick={() => setRules((rs) => rs.filter((_, x) => x !== i))} title="Remove rule"><Trash2 size={14} /></button>
+            </div>
+          ))}
+          <div className="flex justify-between pt-1">
+            <button className="btn-ghost !py-1.5 text-xs" onClick={() => setRules((rs) => [...rs, { disposition: 'VM', title: '', days: 2, type: 'callback' }])}><Plus size={13} /> Add rule</button>
+            <button className="btn-primary !py-1.5 text-xs" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save rules'}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── daily targets editor ──────────────────────────────────────
+function TargetsCard({ targets, setTargets }) {
+  const toast = useToast()
+  const { run: save, busy } = useAction(async () => {
+    await api('/settings/targets', { method: 'PUT', body: targets })
+  }, { toast, successMsg: 'Daily targets saved' })
+
+  return (
+    <div className="card p-6">
+      <div className="mb-4 flex items-center gap-2.5">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-white"><Target size={18} /></div>
+        <div>
+          <h2 className="text-sm font-bold text-slate-800">Daily targets (per agent)</h2>
+          <p className="text-xs text-slate-500">Agents see progress bars on their dashboard. Set 0 to hide a metric.</p>
+        </div>
+      </div>
+      {!targets ? <p className="py-4 text-center text-sm text-slate-400">Loading…</p> : (
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="label">Calls logged / day</label>
+            <input className="input w-28" type="number" min="0" max="500" value={targets.calls} onChange={(e) => setTargets({ ...targets, calls: Number(e.target.value) })} />
+          </div>
+          <div>
+            <label className="label">Dispositions set / day</label>
+            <input className="input w-28" type="number" min="0" max="500" value={targets.dispositions} onChange={(e) => setTargets({ ...targets, dispositions: Number(e.target.value) })} />
+          </div>
+          <button className="btn-primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save targets'}</button>
+        </div>
+      )}
     </div>
   )
 }

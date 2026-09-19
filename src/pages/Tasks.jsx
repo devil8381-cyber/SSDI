@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CheckCircle2, Circle, Plus, ClipboardList, Loader2 } from 'lucide-react'
+import { CheckCircle2, Circle, Plus, ClipboardList, Loader2, Clock } from 'lucide-react'
 import { api, describeError } from '../api'
 import { useAuth } from '../auth'
 import { useAction } from '../lib/hooks'
@@ -33,6 +33,11 @@ export default function Tasks() {
     setBusyId(t.id)
     await api(`/tasks/${t.id}`, { method: 'PATCH', body: { status: t.status === 'open' ? 'done' : 'open' } })
   }, { toast, onDone: () => { setBusyId(null); load() } })
+
+  const { run: snooze, busy: snoozing } = useAction(async (t) => {
+    setBusyId(t.id)
+    await api(`/tasks/${t.id}`, { method: 'PATCH', body: { due_at: new Date(Date.now() + 2 * 86400000).toISOString() } })
+  }, { toast, successMsg: 'Snoozed 2 days', onDone: () => { setBusyId(null); load() } })
 
   const todayStr = new Date().toISOString().slice(0, 10)
   const isOverdue = (t) => t.status === 'open' && t.due_at && t.due_at.slice(0, 10) < todayStr
@@ -73,6 +78,11 @@ export default function Tasks() {
                   </p>
                 </div>
                 <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-500">{(t.type || 'other').replace('_', ' ')}</span>
+                {t.status === 'open' && (
+                  <button onClick={() => snooze(t)} disabled={snoozing && busyId === t.id} className="rounded-lg p-1.5 text-slate-300 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-40" title="Snooze 2 days">
+                    {snoozing && busyId === t.id ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />}
+                  </button>
+                )}
               </div>
             ))}
           </div>
