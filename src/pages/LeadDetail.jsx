@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  ArrowLeft, Mail, FilePlus2, Trash2, Save, Upload, Play, Copy, Download, Plus,
-  CheckCircle2, Circle, FileText, Mic, Send, Clock, Zap, Activity, Loader2,
+  ArrowLeft, ArrowRight, Mail, FilePlus2, Trash2, Save, Upload, Play, Copy, Download, Plus,
+  CheckCircle2, Circle, FileText, Mic, Send, Clock, Zap, Activity, Loader2, Phone, MessageSquare,
 } from 'lucide-react'
 import { api, describeError } from '../api'
 import { useAuth } from '../auth'
 import { useAction, useDirtyGuard } from '../lib/hooks'
 import { validateForm, emailRule, phoneRule, maxLen, sanitizeText } from '../lib/validate'
+import { renderTemplate } from '../lib/render'
 import { useToast, Modal, Spinner, Empty, PageError, DispositionBadge, fmtDateTime, ageFrom } from '../ui'
 import { DISPOSITIONS, CRITERIA_REASONS, STATES, DOC_TYPES, SMTP_PURPOSES, TASK_TYPES } from '../config'
 
@@ -69,8 +70,18 @@ export default function LeadDetail() {
     }
   }, [id])
 
+  useEffect(() => {
+    // new lead id → clear stale state so nothing from the previous lead flashes
+    setData(null); setForm(null); setLoadError(null); setNeighbors(null)
+  }, [id])
   useEffect(() => { load() }, [load])
   useEffect(() => { api('/users/agents').then((d) => setAgents(d.users || [])).catch(() => {}) }, [])
+
+  // ── next / previous lead in the agent's queue (power-workflow) ──
+  const [neighbors, setNeighbors] = useState(null)
+  useEffect(() => {
+    api(`/leads/${id}/neighbors`).then(setNeighbors).catch(() => {})
+  }, [id, data])
 
   // Keep the ref in sync with computed dirty state
   const dirty = useMemo(
@@ -157,6 +168,34 @@ export default function LeadDetail() {
     await api(`/tasks/${t.id}`, { method: 'PATCH', body: { status: t.status === 'open' ? 'done' : 'open' } })
   }, { toast, onDone: load })
 
+  // ── speed tools: call logging, quick note, text-template copy ──
+  const { run: logCall } = useAction(async () => {
+    await api(`/leads/${id}/call`, { method: 'POST' })
+  }, { toast, successMsg: 'Call logged in the timeline' })
+
+  const [noteText, setNoteText] = useState('')
+  const { run: addNote, busy: noting } = useAction(async () => {
+    const text = sanitizeText(noteText, 1000)
+    if (!text) return
+    await api(`/leads/${id}/note`, { method: 'POST', body: { text } })
+    setNoteText('')
+  }, { toast, successMsg: 'Note added', onDone: load })
+
+  const [textTemplates, setTextTemplates] = useState([])
+  useEffect(() => { api('/templates?type=text').then((d) => setTextTemplates(d.templates || [])).catch(() => {}) }, [id])
+  const { run: copyTextTemplate } = useAction(async (tid) => {
+    const t = textTemplates.find((x) => x.id === tid)
+    if (!t) return
+    const vars = {
+      first_name: lead?.first_name || '', last_name: lead?.last_name || '', email: lead?.email || '',
+      phone: lead?.phone || '', state: lead?.state || '', city: lead?.city || '',
+      agent_name: profile?.name || '', doc_link: '', age: ageFrom(lead?.dob) ?? '',
+    }
+    const text = renderTemplate(t.body, vars)
+    await navigator.clipboard.writeText(text)
+    return t.name
+  }, { toast, successMsg: (name) => `“${name}” copied — paste it into your SMS app` })
+
   if (loadError) {
     return (
       <div className="mx-auto max-w-3xl pt-10">
@@ -173,7 +212,24 @@ export default function LeadDetail() {
       {/* header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <button onClick={() => navigate('/leads')} className="mb-1 flex items-center gap-1 text-xs text-slate-400 hover:text-brand-600"><ArrowLeft size={13} /> Back to leads</button>
+          <div className="mb-1 flex items-center gap-2">
+            <button onClick={() => navigate('/leads')} className="flex items-center gap-1 text-xs text-slate-400 hover:text-brand-600"><ArrowLeft size={13} /> Back to leads</button>
+            {neighbors && neighbors.total > 0 && (
+              <span className="flex items-center gap-1 text-xs text-slate-400">
+                <button
+                  disabled={!neighbors.prev}
+                  onClick={() => neighbors.prev && navigate(`/leads/${neighbors.prev}`)}
+                  className="rounded p-1 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30" title="Previous lead (newest → oldest)"
+                ><ArrowRight size={12} className="rotate-180" /></button>
+                <span className="tabular-nums">{neighbors.position} / {neighbors.total}</span>
+                <button
+                  disabled={!neighbors.next}
+                  onClick={() => neighbors.next && navigate(`/leads/${neighbors.next}`)}
+                  className="rounded p-1 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30" title="Next lead"
+                ><ArrowRight size={12} /></button>
+              </span>
+            )}
+          </div>
           <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="text-xl font-bold text-slate-800">{lead.first_name} {lead.last_name}</h1>
             <DispositionBadge value={lead.disposition} />
@@ -184,6 +240,14 @@ export default function LeadDetail() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {lead.phone && (
+            <a
+              href={`tel:${lead.phone.replace(/[^\d+]/g, '')}`}
+              onClick={() => logCall()}
+              className="btn-ghost !border-emerald-200 !text-emerald-700 hover:!bg-emerald-50"
+              title="Opens your dialer / softphone and logs the call in the timeline"
+            ><Phone size={15} /> Call</a>
+          )}
           <button className="btn-ghost" onClick={() => setShowEmail(true)} disabled={!lead.email} title={lead.email ? '' : 'This lead has no email address'}>
             <Mail size={15} /> Send email
           </button>
@@ -273,6 +337,32 @@ export default function LeadDetail() {
 
         {/* right column */}
         <div className="space-y-5">
+          {/* quick note + text templates — the agent's fastest actions */}
+          <div className="card p-4">
+            <div className="flex gap-2">
+              <input
+                className="input"
+                placeholder="Quick note… (Enter to save)"
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addNote()}
+              />
+              <button className="btn-primary !px-2.5" onClick={addNote} disabled={noting || !noteText.trim()} title="Add to timeline">
+                {noting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+              </button>
+            </div>
+            {textTemplates.length > 0 && (
+              <select
+                className="input mt-2"
+                value=""
+                onChange={(e) => { if (e.target.value) { copyTextTemplate(e.target.value); e.target.value = '' } }}
+                title="Copies the template with this lead's details filled in — paste into your SMS app"
+              >
+                <option value="">💬 Copy a text template for this lead…</option>
+                {textTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            )}
+          </div>
           <EmailHistory emails={data.emails} />
           <Timeline activities={data.activities} />
           {data.metaEvents.length > 0 && (

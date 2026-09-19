@@ -15,6 +15,7 @@ import Templates from './pages/Templates'
 import Users from './pages/Users'
 import Smtp from './pages/Smtp'
 import Integrations from './pages/Integrations'
+import Automation from './pages/Automation'
 import ClaimantUpload from './pages/ClaimantUpload'
 
 function Boot() {
@@ -61,7 +62,9 @@ function SessionWatcher() {
 
 function RequireAuth() {
   const { session, profile, profileError, loading } = useAuth()
-  if (loading) return <Boot />
+  // wait for BOTH the session restore and the profile fetch — a full page
+  // load must never be mistaken for "signed out"
+  if (loading || session === undefined) return <Boot />
   if (!session) return <Navigate to="/login" replace />
   // Signed in but the account record couldn't load (schema missing, DB blip):
   // give the user a way out instead of an endless boot spinner.
@@ -102,8 +105,8 @@ function RequireAdmin() {
 // /login bounces signed-in users straight to the dashboard — otherwise a
 // successful sign-in would leave them staring at the login form.
 function LoginRoute() {
-  const { session, profile, loading } = useAuth()
-  if (!loading && session && profile) return <Navigate to="/" replace />
+  const { session, profile } = useAuth()
+  if (session !== undefined && session && profile) return <Navigate to="/" replace />
   return <Login />
 }
 
@@ -121,14 +124,15 @@ const router = createBrowserRouter([
       { path: '/documents', element: <Documents /> },
       { path: '/scripts', element: <Scripts /> },
       { path: '/templates', element: <Templates /> },
-      {
-        element: <RequireAdmin />,
-        children: [
-          { path: '/admin/users', element: <Users /> },
-          { path: '/admin/smtp', element: <Smtp /> },
-          { path: '/admin/integrations', element: <Integrations /> },
-        ],
-      },
+        {
+          element: <RequireAdmin />,
+          children: [
+            { path: '/admin/users', element: <Users /> },
+            { path: '/admin/automation', element: <Automation /> },
+            { path: '/admin/smtp', element: <Smtp /> },
+            { path: '/admin/integrations', element: <Integrations /> },
+          ],
+        },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

@@ -1,6 +1,7 @@
 import { route } from './_router.mjs'
 import {
   service, json, fail, getSession, unauthorized, notify, today, dbConfigured,
+  getSetting, setSetting,
 } from './_lib.mjs'
 
 const isAdmin = (p) => p?.role === 'admin'
@@ -38,6 +39,42 @@ route('POST', 'setup', async ({ body }) => {
     return fail(error.message)
   }
   return json({ ok: true, id: data.user.id })
+})
+
+// ── global search (topbar) ────────────────────────────────────
+route('GET', 'search', async ({ req, query }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  // PostgREST .or() treats ,() as syntax — strip before matching
+  const clean = String(query.get('q') || '').replace(/[%(),*]/g, ' ').trim()
+  if (clean.length < 2) return json({ results: [] })
+  const like = `%${clean}%`
+  let q = service.from('leads')
+    .select('id,first_name,last_name,phone,email,disposition')
+    .or(`first_name.ilike.${like},last_name.ilike.${like},phone.ilike.${like},email.ilike.${like}`)
+    .order('created_at', { ascending: false })
+    .limit(8)
+  if (!isAdmin(s.profile)) q = q.eq('assigned_to', s.user.id)
+  const { data } = await q
+  return json({ results: data || [] })
+})
+
+// ── automation settings: auto-assign mode ─────────────────────
+route('GET', 'settings/auto-assign', async ({ req }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  const v = await getSetting('auto_assign')
+  return json({ mode: v?.mode === 'round_robin' ? 'round_robin' : 'off' })
+})
+
+route('PUT', 'settings/auto-assign', async ({ req, body }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  if (!['off', 'round_robin'].includes(body.mode)) return fail('Mode must be "off" or "round_robin"')
+  await setSetting('auto_assign', { mode: body.mode, updated_at: new Date().toISOString() })
+  return json({ ok: true, mode: body.mode })
 })
 
 // ── me ────────────────────────────────────────────────────────

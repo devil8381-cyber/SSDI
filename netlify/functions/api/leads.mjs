@@ -1,7 +1,7 @@
 import { route } from './_router.mjs'
 import {
   service, json, fail, getSession, unauthorized, logActivity, notify, adminIds,
-  sendCapi, metaSecrets, getSetting, DISPOSITIONS, LEAD_SOURCES,
+  sendCapi, metaSecrets, getSetting, DISPOSITIONS, LEAD_SOURCES, pickAgentRoundRobin,
 } from './_lib.mjs'
 
 const isAdmin = (p) => p?.role === 'admin'
@@ -101,12 +101,52 @@ route('POST', 'leads', async ({ req, body }) => {
   const patch = { source: LEAD_SOURCES.includes(body.source) ? body.source : 'manual' }
   for (const f of LEAD_FIELDS) if (f in body) patch[f] = body[f] === '' ? null : body[f]
   cleanLeadPatch(patch)
-  if (isAdmin(s.profile)) patch.assigned_to = body.assigned_to || null
+  if (isAdmin(s.profile)) patch.assigned_to = body.assigned_to || (await pickAgentRoundRobin())
   else patch.assigned_to = s.user.id
   const { data, error } = await service.from('leads').insert(patch).select('*').single()
   if (error) return fail(error.message)
   await logActivity(data.id, s.user.id, 'created', 'Lead created')
   return json({ lead: data })
+})
+
+// ── stale-lead detection + recycling (admin) ──────────────────
+// NOTE: registered BEFORE the `leads/:id` detail route so the static
+// "stale" path is never swallowed as an :id parameter.
+const TERMINAL = ['Signed', 'Approved']
+async function findStaleLeads(days) {
+  const cutoff = new Date(Date.now() - Math.max(1, days) * 86400000).toISOString()
+  let q = service.from('leads')
+    .select('id,disposition,assigned_to')
+    .lt('created_at', cutoff)
+    .or(`last_activity_at.is.null,last_activity_at.lt.${cutoff}`)
+    .not('disposition', 'in', '("Signed","Approved")')
+    .limit(5000)
+  const { data } = await q
+  return data || []
+}
+
+route('GET', 'leads/stale', async ({ req, query }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  const days = Math.max(1, Math.min(180, Number(query.get('days')) || 14))
+  const stale = await findStaleLeads(days)
+  const byDisposition = {}
+  for (const l of stale) byDisposition[l.disposition] = (byDisposition[l.disposition] || 0) + 1
+  return json({ days, total: stale.length, byDisposition })
+})
+
+route('POST', 'leads/recycle', async ({ req, body }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  const days = Math.max(1, Math.min(180, Number(body.days) || 14))
+  const stale = await findStaleLeads(days)
+  if (!stale.length) return json({ count: 0 })
+  const ids = stale.map((l) => l.id)
+  await service.from('leads').update({ assigned_to: null, updated_at: new Date().toISOString() }).in('id', ids)
+  for (const id of ids) await logActivity(id, s.user.id, 'assigned', `♻️ Recycled to unassigned pool (no activity for ${days}+ days)`)
+  return json({ count: ids.length })
 })
 
 // ── detail (everything for the lead page) ─────────────────────
@@ -255,7 +295,7 @@ route('POST', 'leads/import', async ({ req, body }) => {
       disability: cleanStr(r.disability, 2000), notes: cleanStr(r.notes, 2000),
       campaign: cleanStr(r.campaign, 200),
       source: 'import',
-      assigned_to: UUID_RE.test(String(body.assign_to || '')) ? body.assign_to : null,
+      assigned_to: UUID_RE.test(String(body.assign_to || '')) ? body.assign_to : (await pickAgentRoundRobin()),
     })
   }
   let inserted = 0
@@ -268,3 +308,84 @@ route('POST', 'leads/import', async ({ req, body }) => {
   if (body.assign_to) await notify([body.assign_to], `${inserted} leads imported & assigned to you`, 'Check your Leads page')
   return json({ inserted, duplicates })
 })
+
+// ── prev / next for the lead-page work flow ───────────────────
+route('GET', 'leads/:id/neighbors', async ({ req, params }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  const lead = await getLeadOr404(params.id)
+  if (!lead) return fail('Lead not found', 404)
+  if (!canSee(s.profile, lead)) return unauthorized()
+  let q = service.from('leads').select('id').order('created_at', { ascending: false }).limit(10000)
+  if (!isAdmin(s.profile)) q = q.eq('assigned_to', s.user.id)
+  const { data } = await q
+  const list = data || []
+  const idx = list.findIndex((r) => r.id === lead.id)
+  return json({
+    prev: idx > 0 ? list[idx - 1].id : null,
+    next: idx >= 0 && idx < list.length - 1 ? list[idx + 1].id : null,
+    position: idx + 1,
+    total: list.length,
+  })
+})
+
+// ── quick note (timeline, no form save needed) ────────────────
+route('POST', 'leads/:id/note', async ({ req, params, body }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  const lead = await getLeadOr404(params.id)
+  if (!lead) return fail('Lead not found', 404)
+  if (!canSee(s.profile, lead)) return unauthorized()
+  const text = cleanStr(body.text, 1000)
+  if (!text) return fail('Note is empty')
+  await logActivity(lead.id, s.user.id, 'note', `📝 ${text}`)
+  return json({ ok: true })
+})
+
+// ── call log (click-to-call support) ──────────────────────────
+route('POST', 'leads/:id/call', async ({ req, params }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  const lead = await getLeadOr404(params.id)
+  if (!lead) return fail('Lead not found', 404)
+  if (!canSee(s.profile, lead)) return unauthorized()
+  await logActivity(lead.id, s.user.id, 'note', `📞 Call started to ${lead.phone || 'lead'}`)
+  return json({ ok: true })
+})
+
+// ── bulk disposition ──────────────────────────────────────────
+route('POST', 'leads/bulk-disposition', async ({ req, body, context }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  const ids = (Array.isArray(body.ids) ? body.ids : []).filter((x) => UUID_RE.test(String(x))).slice(0, 5000)
+  if (!ids.length) return fail('No valid leads selected')
+  if (!DISPOSITIONS.includes(body.disposition)) return fail('Invalid disposition')
+  const reason = body.disposition === 'Criteria Not Met' ? (cleanStr(body.reason, 100) || null) : null
+
+  // agents may only bulk-disposition their own leads
+  let scoped = ids
+  if (!isAdmin(s.profile)) {
+    const { data: own } = await service.from('leads').select('id').in('id', ids).eq('assigned_to', s.user.id)
+    scoped = (own || []).map((r) => r.id)
+  }
+  if (!scoped.length) return fail('None of the selected leads are assigned to you')
+
+  await service.from('leads').update({
+    disposition: body.disposition, disposition_reason: reason, updated_at: new Date().toISOString(),
+  }).in('id', scoped)
+  for (const id of scoped) {
+    await logActivity(id, s.user.id, 'disposition', `Disposition → ${body.disposition}${reason ? ` (${reason})` : ''}`)
+  }
+  // quality signals for the affected leads, processed in the background
+  const { data: targets } = await service.from('leads').select('*').in('id', scoped)
+  const firing = (targets || []).filter((l) => ['Signed', 'Approved', 'Criteria Not Met'].includes(l.disposition))
+  if (firing.length) {
+    context.waitUntil((async () => {
+      for (const l of firing) {
+        try { await fireMetaSignal(context, l, l.disposition, l.disposition_reason) } catch (e) { console.error('bulk meta signal failed', e) }
+      }
+    })())
+  }
+  return json({ ok: true, count: scoped.length })
+})
+

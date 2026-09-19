@@ -283,6 +283,20 @@ export async function ensureFolder(drive, name, parentId) {
   return drive.createFolder(name, parentId)
 }
 
+// ── auto-assign (round-robin) ────────────────────────────────
+// Respects the admin's Automation setting; returns null when auto-assign is
+// off (lead goes to the unassigned pool) or when no active agents exist.
+export async function pickAgentRoundRobin() {
+  const s = (await getSetting('auto_assign')) || {}
+  if (s.mode !== 'round_robin') return null
+  const { data: agents } = await service.from('profiles').select('id').eq('role', 'agent').eq('is_active', true)
+  if (!agents?.length) return null
+  const { data: counts } = await service.from('leads').select('assigned_to')
+  const tally = {}
+  for (const a of agents) tally[a.id] = (counts || []).filter((c) => c.assigned_to === a.id).length
+  return agents.sort((a, b) => tally[a.id] - tally[b.id])[0].id
+}
+
 // ── misc ─────────────────────────────────────────────────────
 export function baseUrl(url) {
   return process.env.SITE_URL || url.origin

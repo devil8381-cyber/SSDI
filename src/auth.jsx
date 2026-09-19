@@ -4,20 +4,26 @@ import { supabase, api, describeError } from './api'
 const AuthCtx = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(null)
+  // `undefined` = still restoring the session from storage (boot),
+  // `null` = definitely signed out, object = signed in.
+  // Without this distinction, a full page load briefly looks "signed out"
+  // and deep links get kicked to /login before the session restores.
+  const [session, setSession] = useState(undefined)
   const [profile, setProfile] = useState(null)
   const [profileError, setProfileError] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
+    supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null))
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s ?? null))
     return () => sub.subscription.unsubscribe()
   }, [])
 
   useEffect(() => {
+    if (session === undefined) return // boot in progress — don't decide anything yet
     let stop = false
     if (!session) { setProfile(null); setProfileError(null); setLoading(false); return }
+    setLoading(true)
     api('/me')
       .then((d) => {
         if (stop) return

@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import { route } from './_router.mjs'
 import {
   service, json, fail, getSession, unauthorized, logActivity, notify,
-  getSetting, setSetting, encrypt, metaSecrets, sendCapi,
+  getSetting, setSetting, encrypt, metaSecrets, sendCapi, pickAgentRoundRobin,
 } from './_lib.mjs'
 
 const isAdmin = (p) => p?.role === 'admin'
@@ -145,15 +145,8 @@ async function processMetaLead(leadgenId, formId, formNameHint) {
     return null
   }
 
-  // round-robin across active agents
-  const { data: agents } = await service.from('profiles').select('id').eq('role', 'agent').eq('is_active', true)
-  let assigned = null
-  if (agents?.length) {
-    const { data: counts } = await service.from('leads').select('assigned_to')
-    const tally = {}
-    for (const a of agents) tally[a.id] = (counts || []).filter((c) => c.assigned_to === a.id).length
-    assigned = agents.sort((a, b) => tally[a.id] - tally[b.id])[0].id
-  }
+  // respect the admin's Automation setting (off → unassigned pool)
+  const assigned = await pickAgentRoundRobin()
 
   let formName = formNameHint || null
   if (!formName && formId) {

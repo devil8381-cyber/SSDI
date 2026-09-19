@@ -7,7 +7,7 @@ import { useAuth } from '../auth'
 import { useDebounced, useLatestRequest, useAction } from '../lib/hooks'
 import { validateForm, required, emailRule, phoneRule, sanitizeText } from '../lib/validate'
 import { useToast, Modal, DispositionBadge, Empty, Spinner, PageError, ageFrom, leadName, fmtDate } from '../ui'
-import { DISPOSITIONS, STATES } from '../config'
+import { DISPOSITIONS, CRITERIA_REASONS, STATES } from '../config'
 
 const CANON = [
   ['first_name', 'First name'], ['last_name', 'Last name'], ['email', 'Email'], ['phone', 'Phone'],
@@ -108,6 +108,26 @@ export default function Leads() {
     await api('/leads/assign', { method: 'POST', body: { ids: [...selected], agent_id: assignTo === 'unassigned' ? null : assignTo } })
   }, { toast, successMsg: (r) => `${r?.count ?? selected.size} lead(s) assigned`, onDone: load })
 
+  // Bulk disposition — the floor manager's fastest lever
+  const [bulkDisp, setBulkDisp] = useState('')
+  const [bulkReason, setBulkReason] = useState('')
+  const { run: bulkDisposition, busy: dispositioning } = useAction(async () => {
+    if (!bulkDisp || !selected.size) return
+    await api('/leads/bulk-disposition', { method: 'POST', body: { ids: [...selected], disposition: bulkDisp, reason: bulkReason || null } })
+  }, { toast, successMsg: (r) => `${r?.count ?? 0} lead(s) → ${bulkDisp}`, onDone: () => { setBulkDisp(''); setBulkReason('') } })
+
+  // Inline quick-disposition straight from the table row
+  const [quickId, setQuickId] = useState(null)
+  const { run: quickDisposition } = useAction(async (lead, value) => {
+    setRows((rs) => rs.map((x) => (x.id === lead.id ? { ...x, disposition: value, disposition_reason: value === 'Criteria Not Met' ? lead.disposition_reason : null } : x))) // optimistic
+    try {
+      await api(`/leads/${lead.id}`, { method: 'PATCH', body: { disposition: value, disposition_reason: value === 'Criteria Not Met' ? (lead.disposition_reason || null) : null } })
+    } catch (e) {
+      load() // rollback to server truth
+      throw e
+    }
+  }, { toast, successMsg: 'Disposition updated' })
+
   // CSV export walks every page of the current filter; busy state + single flight
   const { run: exportCsv, busy: exporting } = useAction(async () => {
     const first = await api(`/leads?${queryFor(1, 200)}`)
@@ -174,18 +194,32 @@ export default function Leads() {
         </select>
       </div>
 
-      {admin && selected.size > 0 && (
+      {selected.size > 0 && (
         <div className="card flex flex-wrap items-center gap-3 border-brand-200 bg-brand-50/60 p-3">
           <span className="text-sm font-medium text-brand-800">{selected.size} selected</span>
-          <UserPlus size={15} className="text-brand-600" />
-          <select className="input w-auto" value={assignTo} onChange={(e) => setAssignTo(e.target.value)}>
-            <option value="">Assign to…</option>
-            <option value="unassigned">Unassigned (back to pool)</option>
-            {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          {admin && (
+            <>
+              <UserPlus size={15} className="text-brand-600" />
+              <select className="input w-auto" value={assignTo} onChange={(e) => setAssignTo(e.target.value)}>
+                <option value="">Assign to…</option>
+                <option value="unassigned">Unassigned (back to pool)</option>
+                {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+              <button className="btn-primary" onClick={bulkAssign} disabled={!assignTo || assigning}>{assigning ? 'Assigning…' : 'Assign'}</button>
+              <span className="h-5 w-px bg-brand-200" />
+            </>
+          )}
+          <select className="input w-auto" value={bulkDisp} onChange={(e) => setBulkDisp(e.target.value)}>
+            <option value="">Set disposition…</option>
+            {DISPOSITIONS.map((d) => <option key={d}>{d}</option>)}
           </select>
-          <button className="btn-primary" onClick={bulkAssign} disabled={!assignTo || assigning}>
-            {assigning ? 'Assigning…' : 'Apply'}
-          </button>
+          {bulkDisp === 'Criteria Not Met' && (
+            <select className="input w-auto" value={bulkReason} onChange={(e) => setBulkReason(e.target.value)}>
+              <option value="">Reason…</option>
+              {CRITERIA_REASONS.map((r) => <option key={r}>{r}</option>)}
+            </select>
+          )}
+          <button className="btn-primary" onClick={bulkDisposition} disabled={!bulkDisp || dispositioning}>{dispositioning ? 'Updating…' : 'Apply disposition'}</button>
         </div>
       )}
 
@@ -222,11 +256,29 @@ export default function Leads() {
                         <p className="font-medium text-slate-800">{leadName(r)}</p>
                         <p className="text-xs text-slate-400">{[r.city, r.state].filter(Boolean).join(', ') || r.email || '—'}</p>
                       </td>
-                      <td className="td text-slate-600">{r.phone || '—'}</td>
+                      <td className="td text-slate-600" onClick={(e) => e.stopPropagation()}>
+                        {r.phone
+                          ? <a href={`tel:${r.phone.replace(/[^\d+]/g, '')}`} className="hover:text-brand-600 hover:underline" title="Click to call">{r.phone}</a>
+                          : '—'}
+                      </td>
                       <td className="td text-slate-600">{age ?? '—'}</td>
-                      <td className="td">
-                        <DispositionBadge value={r.disposition} />
-                        {r.disposition_reason ? <p className="mt-0.5 text-[11px] text-slate-400">{r.disposition_reason}</p> : null}
+                      <td className="td" onClick={(e) => e.stopPropagation()}>
+                        {quickId === r.id ? (
+                          <select
+                            autoFocus
+                            className="input !py-1 !text-xs"
+                            value={r.disposition}
+                            onChange={(e) => { quickDisposition(r, e.target.value); setQuickId(null) }}
+                            onBlur={() => setQuickId(null)}
+                          >
+                            {DISPOSITIONS.map((d) => <option key={d}>{d}</option>)}
+                          </select>
+                        ) : (
+                          <button className="cursor-pointer" onClick={() => setQuickId(r.id)} title="Click to set disposition without opening the lead">
+                            <DispositionBadge value={r.disposition} />
+                          </button>
+                        )}
+                        {r.disposition_reason && quickId !== r.id ? <p className="mt-0.5 text-[11px] text-slate-400">{r.disposition_reason}</p> : null}
                       </td>
                       <td className="td capitalize text-slate-500">{r.source || '—'}</td>
                       {admin && <td className="td text-slate-600">{r.profiles?.name || <span className="text-amber-600">Unassigned</span>}</td>}
