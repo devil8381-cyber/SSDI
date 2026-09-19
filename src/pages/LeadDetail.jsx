@@ -51,6 +51,7 @@ export default function LeadDetail() {
   const [loadError, setLoadError] = useState(null)
   const [agents, setAgents] = useState([])
   const [showEmail, setShowEmail] = useState(false)
+  const [emailPrefill, setEmailPrefill] = useState(null)
   const [showDocReq, setShowDocReq] = useState(false)
   const [viewer, setViewer] = useState(null)
 
@@ -93,6 +94,26 @@ export default function LeadDetail() {
 
   // Warn before refresh/close and before in-app navigation with unsaved edits
   useDirtyGuard(dirty)
+
+  // ── request docs → auto-compose the doc-request email with the link ──
+  const openEmailWithDocLink = useCallback((link) => {
+    setShowDocReq(false)
+    const vars = {
+      first_name: lead?.first_name || '', last_name: lead?.last_name || '', email: lead?.email || '',
+      phone: lead?.phone || '', state: lead?.state || '', city: lead?.city || '',
+      age: ageFrom(lead?.dob) ?? '', agent_name: profile?.name || '', doc_link: link,
+    }
+    api('/templates?type=email').then((d) => {
+      const tpl = (d.templates || []).find((t) => (t.body || '').includes('{{doc_link}}')) || (d.templates || [])[0]
+      setEmailPrefill(tpl
+        ? { subject: renderTemplate(tpl.subject || '', vars), body: renderTemplate(tpl.body || '', vars), docLink: link }
+        : { subject: 'Documents needed for your claim', body: `<p>Hi ${vars.first_name}, please upload your documents here: ${link}</p>`, docLink: link })
+      setShowEmail(true)
+    }).catch(() => {
+      setEmailPrefill({ subject: 'Documents needed for your claim', body: `<p>Hi ${vars.first_name}, please upload your documents here: ${link}</p>`, docLink: link })
+      setShowEmail(true)
+    })
+  }, [lead, profile])
 
   // While any recording is uploading/processing, poll until it lands in Drive
   const pendingRecording = data?.recordings?.some((r) => r.status === 'uploading' || r.status === 'processing')
@@ -384,8 +405,8 @@ export default function LeadDetail() {
         </div>
       </div>
 
-      <EmailModal open={showEmail} onClose={() => setShowEmail(false)} lead={lead} onSent={load} />
-      <DocRequestModal open={showDocReq} onClose={() => setShowDocReq(false)} lead={lead} onDone={load} />
+      <EmailModal open={showEmail} onClose={() => { setShowEmail(false); setEmailPrefill(null) }} lead={lead} onSent={load} prefill={emailPrefill} />
+      <DocRequestModal open={showDocReq} onClose={() => setShowDocReq(false)} lead={lead} onDone={load} onCreated={openEmailWithDocLink} />
       <RecordingViewer recording={viewer} onClose={() => { setViewer(null); load() }} />
     </div>
   )
@@ -674,7 +695,7 @@ function EmailHistory({ emails }) {
 }
 
 // ── modals ────────────────────────────────────────────────────
-function EmailModal({ open, onClose, lead, onSent }) {
+function EmailModal({ open, onClose, lead, onSent, prefill }) {
   const toast = useToast()
   const [templates, setTemplates] = useState([])
   const [purpose, setPurpose] = useState('followups')
@@ -684,8 +705,16 @@ function EmailModal({ open, onClose, lead, onSent }) {
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    if (open) api('/templates?type=email').then((d) => setTemplates(d.templates || [])).catch(() => {})
-  }, [open])
+    if (open) {
+      api('/templates?type=email').then((d) => setTemplates(d.templates || [])).catch(() => {})
+      // prefill (e.g. doc-request flow) — rendered with lead info + secure link
+      if (prefill) {
+        setSubject(prefill.subject || '')
+        setBody(prefill.body || '')
+        setPurpose('documentation')
+      }
+    }
+  }, [open, prefill])
 
   const applyTemplate = (tid) => {
     setTemplateId(tid)
@@ -710,6 +739,9 @@ function EmailModal({ open, onClose, lead, onSent }) {
   return (
     <Modal open={open} onClose={onClose} title={`Email ${lead.first_name} (${lead.email || 'no email'})`} wide>
       <div className="space-y-3">
+        {prefill?.docLink && (
+          <div className="break-all rounded-lg bg-emerald-50 p-2.5 text-xs text-emerald-700">📎 Secure link attached to this email: {prefill.docLink}</div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label">Use template</label>
@@ -741,7 +773,7 @@ function EmailModal({ open, onClose, lead, onSent }) {
   )
 }
 
-function DocRequestModal({ open, onClose, lead, onDone }) {
+function DocRequestModal({ open, onClose, lead, onDone, onCreated }) {
   const toast = useToast()
   const [types, setTypes] = useState(['Government photo ID'])
   const [message, setMessage] = useState('')
@@ -769,11 +801,16 @@ function DocRequestModal({ open, onClose, lead, onDone }) {
   return (
     <Modal open={open} onClose={onClose} title="Request documents (secure link)">
       {link ? (
-        <div className="space-y-4">
+        <div className="space-y-3">
           <div className="rounded-lg bg-emerald-50 p-4 text-sm text-emerald-700">Secure link created! Send it to {lead.first_name || 'the claimant'} by email or text.</div>
           <div className="break-all rounded-lg bg-slate-900 p-3 font-mono text-xs text-emerald-300">{link}</div>
-          <button className="btn-primary w-full" onClick={() => { navigator.clipboard.writeText(link).then(() => toast('Link copied to clipboard')).catch(() => toast('Couldn’t access the clipboard — select the link text and copy manually.', 'error')) }}>
-            <Copy size={14} /> Copy secure link
+          {lead.email && onCreated && (
+            <button className="btn-primary w-full" onClick={() => onCreated(link)}>
+              <Mail size={14} /> Compose email with this link (recommended)
+            </button>
+          )}
+          <button className="btn-ghost w-full" onClick={() => { navigator.clipboard.writeText(link).then(() => toast('Link copied to clipboard')).catch(() => toast("Couldn’t access the clipboard — select the link text and copy manually.", "error")) }}>
+            <Copy size={14} /> Just copy the link
           </button>
           <button className="btn-ghost w-full" onClick={() => { onClose(); setLink('') }}>Done</button>
         </div>
