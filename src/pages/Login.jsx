@@ -14,10 +14,14 @@ export default function Login() {
   const [busyRef] = useState({ current: false }) // re-entrancy gate surviving re-renders
   const [firstRun, setFirstRun] = useState(false)
   const [checked, setChecked] = useState(false)
+  const [dbReady, setDbReady] = useState(true)
 
   useEffect(() => {
-    // If the DB isn't reachable/configured yet, this just stays on plain login.
-    api('/setup/status').then((d) => setFirstRun(!!d.needed)).catch(() => {})
+    // If the DB isn't reachable/configured yet, tell the user plainly instead
+    // of letting sign-in fail with a confusing network error.
+    api('/setup/status')
+      .then((d) => { setFirstRun(!!d.needed); setDbReady(d.dbConfigured !== false) })
+      .catch(() => {})
       .finally(() => setChecked(true))
   }, [])
 
@@ -54,7 +58,14 @@ export default function Login() {
           <h1 className="mt-4 text-2xl font-bold text-white">LeadDesk</h1>
           <p className="mt-1 text-sm text-slate-400">Sales &amp; lead management for SSDI teams</p>
         </div>
-        {checked && firstRun && (
+        {checked && !dbReady && (
+          <div className="mb-4 rounded-xl border border-rose-400/40 bg-rose-500/10 p-3 text-xs leading-relaxed text-rose-200">
+            <b>Database not connected.</b> Sign-in is disabled because the server has no Supabase keys yet.
+            <br />Local dev: paste <code>SUPABASE_URL</code>, <code>SUPABASE_ANON_KEY</code>, <code>SUPABASE_SERVICE_ROLE_KEY</code> + the two <code>VITE_</code> keys into <code>.env</code>, then restart the dev server.
+            <br />Production: set the same keys under Netlify → Site settings → Environment variables and redeploy.
+          </div>
+        )}
+        {checked && dbReady && firstRun && (
           <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-300/40 bg-amber-400/10 p-3 text-xs text-amber-300">
             <ShieldCheck size={16} className="mt-0.5 shrink-0" />
             <span>Welcome! No admin exists yet. Create the first admin account — this screen disappears afterwards.</span>

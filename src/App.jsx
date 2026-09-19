@@ -60,9 +60,28 @@ function SessionWatcher() {
 }
 
 function RequireAuth() {
-  const { session, profile, loading } = useAuth()
+  const { session, profile, profileError, loading } = useAuth()
   if (loading) return <Boot />
   if (!session) return <Navigate to="/login" replace />
+  // Signed in but the account record couldn't load (schema missing, DB blip):
+  // give the user a way out instead of an endless boot spinner.
+  if (!profile && profileError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
+        <div className="card max-w-md p-8 text-center">
+          <h1 className="text-lg font-bold text-slate-800">Couldn't load your account</h1>
+          <p className="mt-2 text-sm text-slate-500">{profileError}</p>
+          <p className="mt-1 text-xs text-slate-400">
+            If this keeps happening, the database schema may not be set up — run <code>db/schema.sql</code> in the Supabase SQL editor.
+          </p>
+          <div className="mt-5 flex justify-center gap-2">
+            <button className="btn-primary" onClick={() => window.location.reload()}>Try again</button>
+            <button className="btn-ghost" onClick={() => supabase.auth.signOut()}>Sign out</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
   if (!profile) return <Boot />
   return (
     <>
