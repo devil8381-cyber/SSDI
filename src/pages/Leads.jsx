@@ -59,7 +59,7 @@ export default function Leads() {
   const [showAdd, setShowAdd] = useState(false)
   const [assignTo, setAssignTo] = useState('')
 
-  const latestReq = useLatestRequest()
+  const req = useLatestRequest()
 
   const queryFor = useCallback((pg, limit) => {
     const p = new URLSearchParams({ page: String(pg), limit: String(limit) })
@@ -72,22 +72,22 @@ export default function Leads() {
   }, [q, disposition, assigned, source, createdAfter])
 
   const load = useCallback(async () => {
-    const reqId = latestReq() // tag this request; stale responses get discarded below
+    const reqId = req.next() // tag this request; stale responses get discarded below
     setLoading(true)
     setLoadError(null)
     try {
       const d = await api(`/leads?${queryFor(page, PAGE_SIZE)}`)
-      if (reqId !== latestReq()) return
+      if (!req.isCurrent(reqId)) return
       setRows(d.rows || [])
       setTotal(d.total || 0)
       setSelected(new Set())
     } catch (e) {
-      if (reqId !== latestReq()) return
+      if (!req.isCurrent(reqId)) return
       setLoadError(describeError(e))
     } finally {
-      if (reqId === latestReq()) setLoading(false)
+      if (req.isCurrent(reqId)) setLoading(false)
     }
-  }, [queryFor, page, latestReq])
+  }, [queryFor, page, req])
 
   useEffect(() => { load() }, [load])
   useEffect(() => { if (admin) api('/users/agents').then((d) => setAgents(d.users || [])).catch(() => {}) }, [admin])

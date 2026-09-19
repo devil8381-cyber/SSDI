@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useBlocker } from 'react-router-dom'
 import { describeError } from '../api'
 
@@ -90,9 +90,14 @@ export function useOnline() {
 
 // ── Discards responses from superseded requests ───────────────────────────
 // The classic search/filter race: two requests in flight, the older one
-// resolves last and paints stale data. Bump the counter on every call and
-// only apply the result if it's still the newest.
+// resolves last and paints stale data. Take a ticket with `next()` before the
+// request, then check `isCurrent(ticket)` — checking must never mint a new
+// ticket (a previous version incremented on every check and discarded
+// everything, including the fresh response).
 export function useLatestRequest() {
   const idRef = useRef(0)
-  return useCallback(() => ++idRef.current, [])
+  return useMemo(() => ({
+    next: () => ++idRef.current,
+    isCurrent: (id) => id === idRef.current,
+  }), [])
 }
