@@ -195,14 +195,14 @@ export function metaSecrets(meta) {
 // ── Google Drive via REST (service account; no SDK — Windows-safe) ──
 const driveTokenCache = {}
 
-async function driveAccessToken(clientEmail, privateKey) {
-  const cached = driveTokenCache[clientEmail]
+async function driveAccessToken(clientEmail, privateKey, scope = 'https://www.googleapis.com/auth/drive') {
+  const cached = driveTokenCache[clientEmail + scope]
   const now = Math.floor(Date.now() / 1000)
   if (cached && cached.exp > now + 60) return cached.token
   const b64 = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url')
   const unsigned = `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64({
     iss: clientEmail,
-    scope: 'https://www.googleapis.com/auth/drive',
+    scope,
     aud: 'https://oauth2.googleapis.com/token',
     iat: now,
     exp: now + 3600,
@@ -214,8 +214,8 @@ async function driveAccessToken(clientEmail, privateKey) {
     body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: `${unsigned}.${signature}` }),
   })
   const data = await res.json()
-  if (!data.access_token) throw new Error(`Drive auth failed: ${data.error_description || data.error || res.status}`)
-  driveTokenCache[clientEmail] = { token: data.access_token, exp: now + (data.expires_in || 3600) }
+  if (!data.access_token) throw new Error(`Google auth failed: ${data.error_description || data.error || res.status}`)
+  driveTokenCache[clientEmail + scope] = { token: data.access_token, exp: now + (data.expires_in || 3600) }
   return data.access_token
 }
 
@@ -283,19 +283,7 @@ export async function ensureFolder(drive, name, parentId) {
   return drive.createFolder(name, parentId)
 }
 
-// ── auto-assign (round-robin) ────────────────────────────────
-// Respects the admin's Automation setting; returns null when auto-assign is
-// off (lead goes to the unassigned pool) or when no active agents exist.
-export async function pickAgentRoundRobin() {
-  const s = (await getSetting('auto_assign')) || {}
-  if (s.mode !== 'round_robin') return null
-  const { data: agents } = await service.from('profiles').select('id').eq('role', 'agent').eq('is_active', true)
-  if (!agents?.length) return null
-  const { data: counts } = await service.from('leads').select('assigned_to')
-  const tally = {}
-  for (const a of agents) tally[a.id] = (counts || []).filter((c) => c.assigned_to === a.id).length
-  return agents.sort((a, b) => tally[a.id] - tally[b.id])[0].id
-}
+// ── capacity-aware round-robin lives near the end of this file ──
 
 // ── misc ─────────────────────────────────────────────────────
 export function baseUrl(url) {
@@ -412,4 +400,135 @@ export async function sendSystemEmail({ to, subject, html }) {
     to, subject, html,
   })
   return prof.name
+}
+
+// ── capacity-aware round-robin ───────────────────────────────
+// Skips agents who hit their max_leads cap (null cap = unlimited).
+export async function pickAgentRoundRobin() {
+  const s = (await getSetting('auto_assign')) || {}
+  if (s.mode !== 'round_robin') return null
+  const { data: agents } = await service.from('profiles').select('*').eq('role', 'agent').eq('is_active', true)
+  if (!agents?.length) return null
+  const { data: counts } = await service.from('leads').select('assigned_to')
+  const tally = {}
+  for (const a of agents) tally[a.id] = (counts || []).filter((c) => c.assigned_to === a.id).length
+  const pool = agents.filter((a) => !a.max_leads || tally[a.id] < a.max_leads)
+  if (!pool.length) return null // every agent at capacity → unassigned pool
+  return pool.sort((a, b) => tally[a.id] - tally[b.id])[0].id
+}
+
+// ── welcome email on assignment ──────────────────────────────
+// Fires once per lead+agent pair, only when the admin hasn't disabled it.
+export async function maybeSendWelcomeEmail(lead, agentId) {
+  try {
+    const cfg = (await getSetting('welcome_email')) || { enabled: true }
+    if (!cfg.enabled || !agentId || !lead?.email) return
+    const { data: agent } = await service.from('profiles').select('*').eq('id', agentId).single()
+    if (!agent) return
+    const { data: prior } = await service.from('activities')
+      .select('detail').eq('lead_id', lead.id).eq('type', 'welcome').limit(50)
+    if ((prior || []).some((p) => p.detail?.agent_id === agentId)) return // already welcomed by this agent
+    const { data: tpl } = await service.from('templates')
+      .select('subject,body').eq('name', 'Agent Assigned — Welcome (ABA)').maybeSingle()
+    const vars = { ...leadVars(lead, { name: agent.name }), agent_name: agent.name || '', agent_phone: agent.phone || '', agent_email: agent.email || '' }
+    const subject = tpl?.subject ? render(tpl.subject, vars) : 'Your specialist has been assigned — American Benefits Advocates'
+    const body = tpl?.body ? render(tpl.body, vars)
+      : `<p>Hi <strong>${vars.first_name}</strong>,</p><p>Great news — your SSDI file is moving forward. Your assigned specialist is <strong>${vars.agent_name}</strong>${vars.agent_phone ? ` and they'll be calling you from <strong>${vars.agent_phone}</strong>` : ''}.</p><p>Please keep your phone nearby — and reply to this email if you have any questions in the meantime.</p><p>American Benefits Advocates</p>`
+    await sendSystemEmail({ to: lead.email, subject, html: body })
+    await service.from('activities').insert({ lead_id: lead.id, user_id: null, type: 'welcome', title: `✉️ Welcome email sent (agent: ${vars.agent_name})`, detail: { agent_id: agentId } })
+  } catch (e) {
+    console.error('welcome email failed:', e.message)
+  }
+}
+
+// ── Google Sheets sync ───────────────────────────────────────
+// Pulls the sheet as CSV using the Drive service account (share the sheet
+// with the service account email), auto-maps columns, dedupes, imports as
+// unassigned leads.
+export function parseSheetId(u) {
+  const m = String(u || '').match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
+  if (!m) return null
+  const gidMatch = String(u).match(/[#&?]gid=([0-9]+)/)
+  return { sheetId: m[1], gid: gidMatch ? gidMatch[1] : null }
+}
+
+export function parseCsv(text) {
+  const rows = []
+  let row = [], cell = '', inQ = false
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]
+    if (inQ) {
+      if (c === '"' && text[i + 1] === '"') { cell += '"'; i++ }
+      else if (c === '"') inQ = false
+      else cell += c
+    } else if (c === '"') inQ = true
+    else if (c === ',') { row.push(cell); cell = '' }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++
+      row.push(cell); cell = ''
+      if (row.some((x) => x.trim() !== '')) rows.push(row)
+      row = []
+    } else cell += c
+  }
+  row.push(cell)
+  if (row.some((x) => x.trim() !== '')) rows.push(row)
+  return rows
+}
+
+const HEADER_MATCHERS = [
+  ['first_name', /first|^name$|fullname|fullname/i], ['last_name', /last|surname/i],
+  ['email', /email|mail/i], ['phone', /phone|mobile|cell/i],
+  ['dob', /dob|birth/i], ['state', /state/i], ['city', /city|town/i],
+  ['address', /address|street/i], ['zip', /zip|postal/i],
+  ['disability', /disability|condition|impair/i], ['notes', /notes|comment/i],
+]
+export async function syncGoogleSheet() {
+  const cfg = (await getSetting('sheets')) || {}
+  if (!cfg.sheet_url) throw new Error('No Google Sheet configured yet')
+  const parsed = parseSheetId(cfg.sheet_url)
+  if (!parsed) throw new Error('That URL is not a Google Sheets link')
+  const driveSettings = await getSetting('drive')
+  if (!driveSettings?.service_account_enc) throw new Error('Add the Google service account JSON first (Drive section), then share the sheet with that service account email')
+  const creds = JSON.parse(decrypt(driveSettings.service_account_enc))
+  const token = await driveAccessToken(creds.client_email, creds.private_key)
+  const exportUrl = `https://docs.google.com/spreadsheets/d/${parsed.sheetId}/export?format=csv${parsed.gid ? `&gid=${parsed.gid}` : ''}`
+  const res = await fetch(exportUrl, { headers: { authorization: `Bearer ${token}` }, redirect: 'follow' })
+  if (!res.ok) throw new Error(`Google returned ${res.status} — make sure the sheet is shared with the service account email (Editor not required, Viewer is enough)`)
+  const rows = parseCsv(await res.text())
+  if (rows.length < 2) return { imported: 0, duplicates: 0, skipped: 0 }
+  const headers = rows[0]
+  const map = {}
+  for (const [field, re] of HEADER_MATCHERS) {
+    const h = headers.find((x) => re.test(String(x || '')))
+    if (h) map[field] = h
+  }
+  const { data: existing } = await service.from('leads').select('phone,email')
+  const seen = new Set((existing || []).flatMap((l) => [String(l.phone || '').replace(/\D/g, '').slice(-10), (l.email || '').toLowerCase()]).filter(Boolean))
+  const norm = (p) => String(p || '').replace(/\D/g, '').slice(-10)
+  const toInsert = []
+  let duplicates = 0
+  for (const r of rows.slice(1)) {
+    const get = (f) => (map[f] ? String(r[headers.indexOf(map[f])] ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim().slice(0, 500) : '')
+    const phoneN = norm(get('phone'))
+    const emailL = get('email').toLowerCase()
+    const key = phoneN || emailL
+    if (!key) { duplicates++; continue }
+    if (seen.has(key)) { duplicates++; continue }
+    seen.add(phoneN); if (emailL) seen.add(emailL)
+    toInsert.push({
+      first_name: get('first_name').slice(0, 100), last_name: get('last_name').slice(0, 100),
+      email: emailL || null, phone: get('phone').slice(0, 30) || null,
+      dob: get('dob') || null, state: get('state').slice(0, 10) || null, city: get('city').slice(0, 120) || null,
+      address: get('address').slice(0, 300) || null, zip: get('zip').slice(0, 20) || null,
+      disability: get('disability').slice(0, 2000) || null, notes: get('notes').slice(0, 2000) || null,
+      source: 'sheet', campaign: 'Google Sheet', assigned_to: null,
+    })
+  }
+  let imported = 0
+  for (let i = 0; i < toInsert.length; i += 200) {
+    const { error } = await service.from('leads').insert(toInsert.slice(i, i + 200))
+    if (error) throw new Error(`Import failed: ${error.message}`)
+    imported += toInsert.slice(i, i + 200).length
+  }
+  return { imported, duplicates, skipped: rows.length - 1 - toInsert.length - duplicates }
 }

@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import { route } from './_router.mjs'
 import {
   service, json, fail, getSession, unauthorized, logActivity, notify,
-  getSetting, setSetting, encrypt, metaSecrets, sendCapi, pickAgentRoundRobin,
+  getSetting, setSetting, encrypt, metaSecrets, sendCapi, pickAgentRoundRobin, maybeSendWelcomeEmail,
 } from './_lib.mjs'
 
 const isAdmin = (p) => p?.role === 'admin'
@@ -170,6 +170,9 @@ async function processMetaLead(leadgenId, formId, formNameHint) {
   }).select('*').single()
   if (error) throw new Error(error.message)
   await logActivity(lead.id, null, 'created', `⚡ Lead arrived from Meta${formName ? ` (${formName})` : ''}`)
-  if (assigned) await notify([assigned], '⚡ New Meta lead assigned to you', `${first} ${last}`.trim(), lead.id)
+  if (assigned) {
+    await notify([assigned], '⚡ New Meta lead assigned to you', `${first} ${last}`.trim(), lead.id)
+    await maybeSendWelcomeEmail(lead, assigned)
+  }
   return { created: true }
 }

@@ -2,7 +2,7 @@ import { route } from './_router.mjs'
 import {
   service, json, fail, getSession, unauthorized, logActivity, notify, adminIds,
   sendCapi, metaSecrets, getSetting, DISPOSITIONS, LEAD_SOURCES, pickAgentRoundRobin,
-  applyFollowupRules, buildQueueFor, sendSystemEmail, baseUrl,
+  applyFollowupRules, buildQueueFor, sendSystemEmail, baseUrl, maybeSendWelcomeEmail,
 } from './_lib.mjs'
 
 const isAdmin = (p) => p?.role === 'admin'
@@ -243,6 +243,9 @@ route('PATCH', 'leads/:id', async ({ req, params, body, context }) => {
     context.waitUntil(fireMetaSignal(context, updated, patch.disposition, patch.disposition_reason))
     context.waitUntil(applyFollowupRules(updated, patch.disposition))
   }
+  if (activityType === 'assigned' && patch.assigned_to) {
+    context.waitUntil(maybeSendWelcomeEmail(updated, patch.assigned_to))
+  }
   return json({ lead: updated })
 })
 
@@ -255,7 +258,7 @@ route('DELETE', 'leads/:id', async ({ req, params }) => {
 })
 
 // ── bulk assign ───────────────────────────────────────────────
-route('POST', 'leads/assign', async ({ req, body }) => {
+route('POST', 'leads/assign', async ({ req, body, context }) => {
   const s = await getSession(req)
   if (!s) return unauthorized()
   if (!isAdmin(s.profile)) return fail('Admin only', 403)
@@ -271,7 +274,14 @@ route('POST', 'leads/assign', async ({ req, body }) => {
   }
   await service.from('leads').update({ assigned_to: body.agent_id || null, updated_at: new Date().toISOString() }).in('id', ids)
   for (const id of ids) await logActivity(id, s.user.id, 'assigned', `Assigned to ${agentName}`)
-  if (body.agent_id) await notify([body.agent_id], `${ids.length} lead(s) assigned to you`, 'Check your Leads page', null)
+  if (body.agent_id) {
+    await notify([body.agent_id], `${ids.length} lead(s) assigned to you`, 'Check your Leads page', null)
+    // welcome email to each newly assigned claimant (once per lead+agent)
+    const { data: assignedLeads } = await service.from('leads').select('*').in('id', ids)
+    context.waitUntil((async () => {
+      for (const l of assignedLeads || []) await maybeSendWelcomeEmail(l, body.agent_id)
+    })())
+  }
   return json({ ok: true, count: ids.length })
 })
 

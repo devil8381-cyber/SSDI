@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Repeat, Zap, Loader2, CalendarClock, Target, Plus, Trash2 } from 'lucide-react'
+import { Repeat, Zap, Loader2, CalendarClock, Target, Plus, Trash2, MailCheck } from 'lucide-react'
 import { api, describeError } from '../api'
 import { useAction } from '../lib/hooks'
 import { useToast, PageError } from '../ui'
@@ -84,6 +84,7 @@ export default function Automation() {
 
       <RulesCard rules={rules} setRules={setRules} />
       <TargetsCard targets={targets} setTargets={setTargets} />
+      <WelcomeCard />
 
       <div className="card p-6">
         <div className="mb-4 flex items-center gap-2.5">
@@ -198,6 +199,38 @@ function TargetsCard({ targets, setTargets }) {
           <button className="btn-primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save targets'}</button>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── welcome email on assignment toggle ────────────────────────
+function WelcomeCard() {
+  const toast = useToast()
+  const [enabled, setEnabled] = useState(null)
+  useEffect(() => { api('/settings/welcome-email').then((d) => setEnabled(d.enabled)).catch((e) => toast(describeError(e), 'error')) }, [])
+  const { run: toggle, busy } = useAction(async () => {
+    const next = !enabled
+    setEnabled(next)
+    await api('/settings/welcome-email', { method: 'PUT', body: { enabled: next } })
+    return next
+  }, { toast, successMsg: (r) => (r ? 'Welcome emails ON — sent when a lead gets assigned' : 'Welcome emails OFF') })
+  if (enabled === null) return null
+  return (
+    <div className="card p-6">
+      <div className="mb-3 flex items-center gap-2.5">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-600 text-white"><MailCheck size={18} /></div>
+        <div>
+          <h2 className="text-sm font-bold text-slate-800">Welcome email on assignment</h2>
+          <p className="text-xs text-slate-500">When a lead is assigned to an agent, the claimant automatically gets a welcome email with the agent's name and phone number (once per lead + agent).</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <button className={enabled ? 'btn-danger' : 'btn-primary'} onClick={toggle} disabled={busy}>
+          {busy ? 'Saving…' : enabled ? 'Turn OFF' : 'Turn ON'}
+        </button>
+        <span className={`text-sm font-medium ${enabled ? 'text-emerald-600' : 'text-slate-500'}`}>{enabled ? 'ON' : 'OFF'}</span>
+        <span className="text-xs text-slate-400">Edit the wording under Templates → "Agent Assigned — Welcome (ABA)". Requires SMTP configured.</span>
+      </div>
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Zap, HardDrive, Copy, RefreshCw, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import { Zap, HardDrive, Copy, RefreshCw, CheckCircle2, XCircle, Loader2, Table2 } from 'lucide-react'
 import { api, describeError } from '../api'
 import { useAction } from '../lib/hooks'
 import { useToast, Spinner } from '../ui'
@@ -11,6 +11,71 @@ export default function Integrations() {
       <h1 className="text-xl font-bold text-slate-800">Integrations</h1>
       <MetaCard />
       <DriveCard />
+      <SheetsCard />
+    </div>
+  )
+}
+
+// ── Google Sheets auto-import ─────────────────────────────────
+function SheetsCard() {
+  const toast = useToast()
+  const [f, setF] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+  const { run: importNow, busy: importing } = useAction(async () => {
+    setResult(null)
+    const r = await api('/sheets/import', { method: 'POST' })
+    setResult(r)
+    return `Imported ${r.imported} lead(s) — ${r.duplicates} duplicate(s) skipped`
+  }, { toast })
+
+  useEffect(() => { api('/settings/sheets').then((d) => setF(d)).catch((e) => toast(describeError(e), 'error')) }, [])
+
+  const save = async () => {
+    setBusy(true)
+    try {
+      await api('/settings/sheets', { method: 'PUT', body: { sheet_url: f.sheet_url, gid: f.gid, auto_import: !!f.auto_import } })
+      toast('Google Sheet settings saved')
+    } catch (e) { toast(describeError(e), 'error') } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="card p-6">
+      <div className="mb-4 flex items-center gap-2.5">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-green-700 text-white"><Table2 size={18} /></div>
+        <div>
+          <h2 className="text-sm font-bold text-slate-800">Google Sheets — auto-import leads</h2>
+          <p className="text-xs text-slate-500">Pulls new rows from your sheet into the CRM as unassigned leads.</p>
+        </div>
+      </div>
+      {!f ? <Spinner className="h-5 w-5" /> : (
+        <>
+          <div className="mb-4 space-y-2 rounded-xl bg-slate-50 p-4 text-xs leading-relaxed text-slate-600">
+            <p>1. Finish the <b>Google Drive</b> setup below first — this reuses the same service account.</p>
+            <p>2. In Google Sheets → <b>Share</b> your lead sheet with the service account email (Viewer is enough).</p>
+            <p>3. First row must be headers — columns auto-map: First name, Last name, Email, Phone, DOB, State, City, Address, ZIP, Disability, Notes. Duplicates (by phone/email) are skipped automatically.</p>
+          </div>
+          <div className="space-y-3">
+            <div><label className="label">Sheet URL (copy from the browser address bar)</label>
+              <input className="input" value={f.sheet_url || ''} onChange={(e) => setF({ ...f, sheet_url: e.target.value })} placeholder="https://docs.google.com/spreadsheets/d/…" />
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div><label className="label">Tab gid (optional — from the URL after #gid=)</label>
+                <input className="input" value={f.gid || ''} onChange={(e) => setF({ ...f, gid: e.target.value })} placeholder="0" />
+              </div>
+              <label className="flex items-end gap-2.5 pb-2 text-sm">
+                <input type="checkbox" checked={!!f.auto_import} onChange={(e) => setF({ ...f, auto_import: e.target.checked })} className="h-4 w-4 rounded border-slate-300" />
+                Auto-import every 10 minutes
+              </label>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button className="btn-primary" onClick={save} disabled={busy}>Save settings</button>
+              <button className="btn-ghost" onClick={importNow} disabled={importing}>{importing ? 'Importing…' : 'Import now'}</button>
+            </div>
+            {result && <p className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">✅ {result.imported} imported · {result.duplicates} duplicate(s) skipped · {result.skipped} row(s) skipped</p>}
+          </div>
+        </>
+      )}
     </div>
   )
 }

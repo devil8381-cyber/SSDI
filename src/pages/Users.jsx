@@ -3,7 +3,7 @@ import { Plus, KeyRound, UserCog, ShieldCheck, Loader2 } from 'lucide-react'
 import { api, describeError } from '../api'
 import { useAuth } from '../auth'
 import { useAction } from '../lib/hooks'
-import { emailRule, maxLen, minLen, required, sanitizeText, validateForm } from '../lib/validate'
+import { emailRule, maxLen, minLen, phoneRule, required, sanitizeText, validateForm } from '../lib/validate'
 import { useToast, Modal, Empty, Spinner, PageError, fmtDuration, fmtDateTime } from '../ui'
 
 export default function Users() {
@@ -55,7 +55,7 @@ export default function Users() {
             <table className="w-full">
               <thead className="bg-slate-50">
                 <tr>
-                  <th className="th">User</th><th className="th">Role</th><th className="th">Leads</th>
+                  <th className="th">User</th><th className="th">Role</th><th className="th">Leads / Capacity</th>
                   <th className="th">Active today</th><th className="th">Last seen</th><th className="th">Status</th><th className="th"></th>
                 </tr>
               </thead>
@@ -71,7 +71,7 @@ export default function Users() {
                         {u.role === 'admin' && <ShieldCheck size={12} />} {u.role}
                       </span>
                     </td>
-                    <td className="td">{u.leadCount ?? 0}</td>
+                    <td className="td">{u.leadCount ?? 0}{u.max_leads ? ` / ${u.max_leads}` : ''}{u.phone ? <p className="text-xs text-slate-400">{u.phone}</p> : null}</td>
                     <td className="td">{fmtDuration(u.activeToday)}</td>
                     <td className="td text-slate-500">{u.last_active_at ? fmtDateTime(u.last_active_at) : 'never'}</td>
                     <td className="td">
@@ -111,7 +111,7 @@ export default function Users() {
 
 function AddUser({ open, onClose, onDone }) {
   const toast = useToast()
-  const [f, setF] = useState({ name: '', email: '', password: '', role: 'agent' })
+  const [f, setF] = useState({ name: '', email: '', password: '', role: 'agent', phone: '', max_leads: '' })
   const [errors, setErrors] = useState({})
   const [busy, setBusy] = useState(false)
   const [formErr, setFormErr] = useState('')
@@ -122,6 +122,7 @@ function AddUser({ open, onClose, onDone }) {
       name: [maxLen(120)],
       email: [required('Email'), emailRule()],
       password: [required('Password'), minLen(6)],
+      phone: [phoneRule()],
     })
     setErrors(errs)
     if (Object.keys(errs).length) return
@@ -130,10 +131,14 @@ function AddUser({ open, onClose, onDone }) {
     try {
       await api('/users', {
         method: 'POST',
-        body: { name: sanitizeText(f.name, 120), email: sanitizeText(f.email, 200).toLowerCase(), password: f.password, role: f.role },
+        body: {
+          name: sanitizeText(f.name, 120), email: sanitizeText(f.email, 200).toLowerCase(),
+          password: f.password, role: f.role, phone: sanitizeText(f.phone, 30),
+          max_leads: f.max_leads === '' ? null : Number(f.max_leads),
+        },
       })
       toast(`User ${f.name || f.email} created — share the password with them securely`)
-      setF({ name: '', email: '', password: '', role: 'agent' })
+      setF({ name: '', email: '', password: '', role: 'agent', phone: '', max_leads: '' })
       onDone()
     } catch (e) {
       setFormErr(describeError(e))
@@ -162,6 +167,14 @@ function AddUser({ open, onClose, onDone }) {
             <option value="agent">Agent</option><option value="admin">Admin</option>
           </select>
         </div>
+        <div>
+          <label className="label">Phone (shown in welcome emails)</label>
+          <input className={`input ${errors.phone ? '!border-rose-400' : ''}`} value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} placeholder="(555) 555-0100" />
+          {errors.phone && <p className="mt-1 text-xs text-rose-600">{errors.phone}</p>}
+        </div>
+        <div><label className="label">Lead capacity (blank = unlimited)</label>
+          <input className="input w-40" type="number" min="0" value={f.max_leads} onChange={(e) => setF({ ...f, max_leads: e.target.value })} placeholder="e.g. 150" />
+        </div>
         <div className="flex justify-end gap-2">
           <button className="btn-ghost" onClick={onClose}>Cancel</button>
           <button className="btn-primary" onClick={save} disabled={busy}>{busy ? 'Creating…' : 'Create user'}</button>
@@ -175,14 +188,19 @@ function EditUser({ user, onClose, onDone }) {
   const toast = useToast()
   const [name, setName] = useState(user?.name || '')
   const [role, setRole] = useState(user?.role || 'agent')
+  const [phone, setPhone] = useState(user?.phone || '')
+  const [maxLeads, setMaxLeads] = useState(user?.max_leads ?? '')
   const [busy, setBusy] = useState(false)
-  useEffect(() => { setName(user?.name || ''); setRole(user?.role || 'agent') }, [user])
+  useEffect(() => { setName(user?.name || ''); setRole(user?.role || 'agent'); setPhone(user?.phone || ''); setMaxLeads(user?.max_leads ?? '') }, [user])
 
   const save = async () => {
     if (busy) return
     setBusy(true)
     try {
-      await api(`/users/${user.id}`, { method: 'PATCH', body: { name: sanitizeText(name, 120), role } })
+      await api(`/users/${user.id}`, {
+        method: 'PATCH',
+        body: { name: sanitizeText(name, 120), role, phone: sanitizeText(phone, 30), max_leads: maxLeads === '' ? null : Number(maxLeads) },
+      })
       toast('User updated')
       onDone()
     } catch (e) {
@@ -201,6 +219,8 @@ function EditUser({ user, onClose, onDone }) {
             <option value="agent">Agent</option><option value="admin">Admin</option>
           </select>
         </div>
+        <div><label className="label">Phone (shown in welcome emails)</label><input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(555) 555-0100" /></div>
+        <div><label className="label">Lead capacity (blank = unlimited)</label><input className="input w-40" type="number" min="0" value={maxLeads} onChange={(e) => setMaxLeads(e.target.value)} /></div>
         <div className="flex justify-end gap-2">
           <button className="btn-ghost" onClick={onClose}>Cancel</button>
           <button className="btn-primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>

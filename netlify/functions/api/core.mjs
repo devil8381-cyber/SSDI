@@ -96,6 +96,56 @@ route('PUT', 'settings/rebuttals', async ({ req, body }) => {
   return json({ ok: true, rebuttals })
 })
 
+// ── welcome email toggle ──────────────────────────────────────
+route('GET', 'settings/welcome-email', async ({ req }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  const cfg = await getSetting('welcome_email')
+  return json({ enabled: cfg?.enabled !== false })
+})
+route('PUT', 'settings/welcome-email', async ({ req, body }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  await setSetting('welcome_email', { enabled: !!body.enabled })
+  return json({ ok: true, enabled: !!body.enabled })
+})
+
+// ── Google Sheets auto-import ─────────────────────────────────
+route('GET', 'settings/sheets', async ({ req }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  const cfg = (await getSetting('sheets')) || {}
+  return json({ sheet_url: cfg.sheet_url || '', gid: cfg.gid || '', auto_import: !!cfg.auto_import })
+})
+route('PUT', 'settings/sheets', async ({ req, body }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  if (body.sheet_url && !/\/spreadsheets\/d\//.test(String(body.sheet_url))) return fail('That is not a Google Sheets URL')
+  await setSetting('sheets', {
+    sheet_url: body.sheet_url || null,
+    gid: body.gid || null,
+    auto_import: !!body.auto_import,
+    updated_at: new Date().toISOString(),
+  })
+  return json({ ok: true })
+})
+route('POST', 'sheets/import', async ({ req }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  try {
+    const result = await import('./_lib.mjs').then((m) => m.syncGoogleSheet())
+    if (result.imported > 0) await notify(await adminIds(), `${result.imported} leads imported from Google Sheet`, `${result.duplicates} duplicate(s) skipped`)
+    return json(result)
+  } catch (e) {
+    return fail(e.message, 400)
+  }
+})
+
 // ── follow-up rules (disposition → auto-task) ─────────────────
 route('GET', 'settings/followup-rules', async ({ req }) => {
   const s = await getSession(req)
@@ -443,6 +493,11 @@ route('POST', 'users', async ({ req, body }) => {
     user_metadata: { name: body.name || body.email.split('@')[0], role: body.role === 'admin' ? 'admin' : 'agent' },
   })
   if (error) return fail(error.message)
+  // agent phone (used in welcome emails) + lead capacity (used by round-robin)
+  const extra = {}
+  if (body.phone) extra.phone = String(body.phone).replace(/[^\d+()\- ]/g, '').slice(0, 30)
+  if ('max_leads' in body) extra.max_leads = body.max_leads === null ? null : Math.max(0, Math.min(100000, Number(body.max_leads) || 0))
+  if (Object.keys(extra).length) await service.from('profiles').update(extra).eq('id', data.user.id)
   return json({ user: { id: data.user.id, email: data.user.email } })
 })
 route('PATCH', 'users/:id', async ({ req, params, body }) => {
@@ -453,6 +508,8 @@ route('PATCH', 'users/:id', async ({ req, params, body }) => {
   if ('name' in body) patch.name = body.name
   if ('role' in body) patch.role = body.role
   if ('is_active' in body) patch.is_active = !!body.is_active
+  if ('phone' in body) patch.phone = body.phone ? String(body.phone).replace(/[^\d+()\- ]/g, '').slice(0, 30) : null
+  if ('max_leads' in body) patch.max_leads = body.max_leads === null || body.max_leads === '' ? null : Math.max(0, Math.min(100000, Number(body.max_leads) || 0))
   if (Object.keys(patch).length) await service.from('profiles').update(patch).eq('id', params.id)
   if (body.password) {
     const { error } = await service.auth.admin.updateUserById(params.id, { password: body.password })
