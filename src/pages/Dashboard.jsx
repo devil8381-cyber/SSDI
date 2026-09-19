@@ -136,6 +136,8 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {d.leaderboard && d.leaderboard.some((r) => r.score > 0) && <Leaderboard rows={d.leaderboard} />}
+
       {d.team && (
         <div className="card overflow-hidden">
           <div className="border-b border-slate-100 px-5 py-3.5">
@@ -239,6 +241,41 @@ function TargetsPanel({ activity, targets }) {
         })}
       </div>
       <p className="mt-3 text-xs text-slate-400">{activity?.calls || 0} calls · {activity?.dispositions || 0} dispositions · {activity?.tasksDone || 0} tasks done today. Targets are set by your admin under Automation.</p>
+    </div>
+  )
+}
+
+// ── admin: weekly leaderboard ─────────────────────────────────
+function Leaderboard({ rows }) {
+  const medal = (i) => (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`)
+  return (
+    <div className="card overflow-hidden">
+      <div className="border-b border-slate-100 px-5 py-3.5">
+        <h2 className="text-sm font-semibold text-slate-700">🏆 Weekly leaderboard <span className="ml-1 text-xs font-normal text-slate-400">last 7 days · score = calls + emails + dispositions + 5×signed</span></h2>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-slate-50">
+            <tr>
+              <th className="th">#</th><th className="th">Agent</th><th className="th">Calls logged</th>
+              <th className="th">Dispositions set</th><th className="th">Signed/Approved</th><th className="th">Emails</th><th className="th">Score</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {rows.map((r, i) => (
+              <tr key={r.name} className={i === 0 ? 'bg-amber-50/60' : ''}>
+                <td className="td text-lg">{medal(i)}</td>
+                <td className="td font-medium text-slate-800">{r.name}</td>
+                <td className="td">{r.calls}</td>
+                <td className="td">{r.dispositions}</td>
+                <td className="td text-emerald-600 font-medium">{r.signed}</td>
+                <td className="td">{r.emails}</td>
+                <td className="td font-bold text-brand-700">{r.score}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

@@ -2,7 +2,7 @@ import { route } from './_router.mjs'
 import {
   service, json, fail, getSession, unauthorized, logActivity, notify, adminIds,
   sendCapi, metaSecrets, getSetting, DISPOSITIONS, LEAD_SOURCES, pickAgentRoundRobin,
-  applyFollowupRules, buildQueueFor, sendSystemEmail, baseUrl, maybeSendWelcomeEmail,
+  applyFollowupRules, buildQueueFor, sendSystemEmail, baseUrl, maybeSendWelcomeEmail, importLeadRows,
 } from './_lib.mjs'
 
 const isAdmin = (p) => p?.role === 'admin'
@@ -285,53 +285,24 @@ route('POST', 'leads/assign', async ({ req, body, context }) => {
   return json({ ok: true, count: ids.length })
 })
 
-// ── CSV import ────────────────────────────────────────────────
-const truthy = (v) => ['true', 'yes', 'y', '1', 'x'].includes(String(v).trim().toLowerCase())
+// ── CSV import (shared engine) ────────────────────────────────
 route('POST', 'leads/import', async ({ req, body }) => {
   const s = await getSession(req)
   if (!s) return unauthorized()
   if (!isAdmin(s.profile)) return fail('Admin only', 403)
-  const rows = Array.isArray(body.rows) ? body.rows : []
-  if (!rows.length) return fail('No rows to import')
-  if (rows.length > 10000) return fail('Maximum 10,000 rows per import — split the file and import in batches.')
-
-  const { data: existing } = await service.from('leads').select('phone,email')
-  const seen = new Set((existing || []).map((l) => [l.phone, (l.email || '').toLowerCase()]).flat().filter(Boolean))
-  const normalize = (p) => String(p || '').replace(/\D/g, '').slice(-10)
-
-  const toInsert = []
-  let duplicates = 0
-  for (const r of rows || []) {
-    if (!r || typeof r !== 'object') { duplicates++; continue }
-    const phoneN = normalize(r.phone)
-    const emailL = cleanStr(r.email, 200)?.toLowerCase() || ''
-    const key = phoneN || emailL
-    if (key && seen.has(key)) { duplicates++; continue }
-    if (phoneN) seen.add(phoneN)
-    if (emailL) seen.add(emailL)
-    toInsert.push({
-      first_name: cleanStr(r.first_name, 100) || '', last_name: cleanStr(r.last_name, 100) || '',
-      email: emailL || null, phone: phoneN ? cleanStr(r.phone, 30) : cleanStr(r.phone, 30),
-      dob: r.dob || null, state: cleanStr(r.state, 10), city: cleanStr(r.city, 120),
-      worked_5_of_10: r.worked_5_of_10 != null && r.worked_5_of_10 !== '' ? truthy(r.worked_5_of_10) : null,
-      receiving_benefits: r.receiving_benefits != null && r.receiving_benefits !== '' ? truthy(r.receiving_benefits) : null,
-      duration_12m: r.duration_12m != null && r.duration_12m !== '' ? truthy(r.duration_12m) : null,
-      has_attorney: r.has_attorney != null && r.has_attorney !== '' ? truthy(r.has_attorney) : null,
-      disability: cleanStr(r.disability, 2000), notes: cleanStr(r.notes, 2000),
-      campaign: cleanStr(r.campaign, 200),
+  if (!Array.isArray(body.rows) || !body.rows.length) return fail('No rows to import')
+  if (body.rows.length > 10000) return fail('Maximum 10,000 rows per import — split the file and import in batches.')
+  try {
+    const result = await importLeadRows(body.rows, {
       source: 'import',
-      assigned_to: UUID_RE.test(String(body.assign_to || '')) ? body.assign_to : (await pickAgentRoundRobin()),
+      dupPolicy: body.dup_policy === 'update' ? 'update' : 'skip',
+      assignedTo: UUID_RE.test(String(body.assign_to || '')) ? body.assign_to : (await pickAgentRoundRobin()),
     })
+    if (result.inserted > 0 && body.assign_to) await notify([body.assign_to], `${result.inserted} leads imported & assigned to you`, 'Check your Leads page')
+    return json(result)
+  } catch (e) {
+    return fail(e.message)
   }
-  let inserted = 0
-  for (let i = 0; i < toInsert.length; i += 200) {
-    const chunk = toInsert.slice(i, i + 200)
-    const { error } = await service.from('leads').insert(chunk)
-    if (error) return fail(`Import failed: ${error.message}`)
-    inserted += chunk.length
-  }
-  if (body.assign_to) await notify([body.assign_to], `${inserted} leads imported & assigned to you`, 'Check your Leads page')
-  return json({ inserted, duplicates })
 })
 
 // ── prev / next for the lead-page work flow ───────────────────

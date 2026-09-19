@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import { route } from './_router.mjs'
 import {
   service, json, fail, getSession, unauthorized, notify, today, dbConfigured,
@@ -112,23 +113,52 @@ route('PUT', 'settings/welcome-email', async ({ req, body }) => {
   return json({ ok: true, enabled: !!body.enabled })
 })
 
-// ── Google Sheets auto-import ─────────────────────────────────
+// ── Google Sheets auto-import + instant push ──────────────────
+// Instant push: the Google Apps Script in the user's sheet POSTs new rows here
+// with the secret token. Public endpoint — token is the auth.
+route('POST', 'sheets/push', async ({ req, body, query }) => {
+  const cfg = (await getSetting('sheets')) || {}
+  const token = req.headers.get('x-sheet-token') || query.get('token') || ''
+  if (!cfg.push_token || token !== cfg.push_token) return fail('Invalid push token', 403)
+  try {
+    const result = await import('./_lib.mjs').then((m) => m.importLeadRows(
+      [body].filter(Boolean),
+      { source: 'sheet', campaign: 'Google Sheet', assignedTo: null, dupPolicy: cfg.dup_policy || 'skip' }
+    ))
+    return json({ ok: true, ...result })
+  } catch (e) {
+    return fail(e.message, 400)
+  }
+})
+
 route('GET', 'settings/sheets', async ({ req }) => {
   const s = await getSession(req)
   if (!s) return unauthorized()
   if (!isAdmin(s.profile)) return fail('Admin only', 403)
-  const cfg = (await getSetting('sheets')) || {}
-  return json({ sheet_url: cfg.sheet_url || '', gid: cfg.gid || '', auto_import: !!cfg.auto_import })
+  let cfg = (await getSetting('sheets')) || {}
+  if (!cfg.push_token) {
+    cfg = { ...cfg, push_token: crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '') }
+    await setSetting('sheets', cfg)
+  }
+  return json({
+    sheet_url: cfg.sheet_url || '', gid: cfg.gid || '',
+    auto_import: !!cfg.auto_import, dup_policy: cfg.dup_policy || 'skip',
+    push_token: cfg.push_token,
+  })
 })
 route('PUT', 'settings/sheets', async ({ req, body }) => {
   const s = await getSession(req)
   if (!s) return unauthorized()
   if (!isAdmin(s.profile)) return fail('Admin only', 403)
   if (body.sheet_url && !/\/spreadsheets\/d\//.test(String(body.sheet_url))) return fail('That is not a Google Sheets URL')
+  const cur = (await getSetting('sheets')) || {}
   await setSetting('sheets', {
+    ...cur,
     sheet_url: body.sheet_url || null,
     gid: body.gid || null,
     auto_import: !!body.auto_import,
+    dup_policy: body.dup_policy === 'update' ? 'update' : 'skip',
+    push_token: cur.push_token || crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, ''),
     updated_at: new Date().toISOString(),
   })
   return json({ ok: true })
@@ -295,6 +325,21 @@ route('GET', 'dashboard', async ({ req }) => {
       .order('last_activity_at', { ascending: true, nullsFirst: true })
       .limit(10)
     out.attention = att || []
+
+    // weekly agent leaderboard (last 7 days of real activity)
+    const weekStart = new Date(Date.now() - 7 * 86400000).toISOString()
+    const { data: weekActs } = await service.from('activities')
+      .select('user_id,type,title,detail').gte('created_at', weekStart).limit(20000)
+    const { data: weekEmails } = await service.from('email_messages')
+      .select('sent_by').gte('created_at', weekStart).limit(20000)
+    out.leaderboard = (out.team || []).filter((u) => u.role === 'agent').map((u) => {
+      const mine = (weekActs || []).filter((a) => a.user_id === u.id)
+      const calls = mine.filter((a) => a.type === 'note' && (a.title || '').startsWith('📞')).length
+      const dispositions = mine.filter((a) => a.type === 'disposition').length
+      const signed = mine.filter((a) => a.type === 'disposition' && ['Signed', 'Approved'].includes(a.detail?.to)).length
+      const emails = (weekEmails || []).filter((e) => e.sent_by === u.id).length
+      return { name: u.name, calls, dispositions, signed, emails, score: calls + emails + dispositions + signed * 5 }
+    }).sort((a, b) => b.score - a.score)
   }
 
   // daily-target progress (agent's own activity today)

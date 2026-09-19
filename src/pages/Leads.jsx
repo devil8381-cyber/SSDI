@@ -326,6 +326,7 @@ function ImportModal({ open, onClose, agents, onDone }) {
   const [rows, setRows] = useState([])
   const [map, setMap] = useState({})
   const [assignTo, setAssignTo] = useState('')
+  const [dupPolicy, setDupPolicy] = useState('skip')
   const [mapError, setMapError] = useState('')
 
   const onFile = (e) => {
@@ -368,8 +369,8 @@ function ImportModal({ open, onClose, agents, onDone }) {
       return
     }
     try {
-      const d = await api('/leads/import', { method: 'POST', body: { rows: mapped, assign_to: assignTo || null } })
-      toast(`Imported ${d.inserted} lead(s)${d.duplicates ? ` — ${d.duplicates} duplicate(s) skipped` : ''}`)
+      const d = await api('/leads/import', { method: 'POST', body: { rows: mapped, assign_to: assignTo || null, dup_policy: dupPolicy } })
+      toast(`Imported ${d.inserted} lead(s)${d.updated ? `, ${d.updated} updated` : ''}${d.duplicates ? ` — ${d.duplicates} duplicate(s) skipped` : ''}`)
       onDone()
     } catch (e) {
       toast(describeError(e), 'error')
@@ -404,6 +405,13 @@ function ImportModal({ open, onClose, agents, onDone }) {
             <select className="input" value={assignTo} onChange={(e) => setAssignTo(e.target.value)}>
               <option value="">Leave unassigned</option>
               {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">If a lead already exists</label>
+            <select className="input" value={dupPolicy} onChange={(e) => setDupPolicy(e.target.value)}>
+              <option value="skip">Skip it</option>
+              <option value="update">Update it with the new info</option>
             </select>
           </div>
           <div className="flex justify-end gap-2">

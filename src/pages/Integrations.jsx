@@ -63,16 +63,43 @@ function SheetsCard() {
               <div><label className="label">Tab gid (optional — from the URL after #gid=)</label>
                 <input className="input" value={f.gid || ''} onChange={(e) => setF({ ...f, gid: e.target.value })} placeholder="0" />
               </div>
-              <label className="flex items-end gap-2.5 pb-2 text-sm">
-                <input type="checkbox" checked={!!f.auto_import} onChange={(e) => setF({ ...f, auto_import: e.target.checked })} className="h-4 w-4 rounded border-slate-300" />
-                Auto-import every 10 minutes
-              </label>
+              <div><label className="label">If a lead already exists</label>
+                <select className="input" value={f.dup_policy || 'skip'} onChange={(e) => setF({ ...f, dup_policy: e.target.value })}>
+                  <option value="skip">Skip it</option>
+                  <option value="update">Update it with the new info</option>
+                </select>
+              </div>
             </div>
+            <label className="flex items-center gap-2.5 text-sm">
+              <input type="checkbox" checked={!!f.auto_import} onChange={(e) => setF({ ...f, auto_import: e.target.checked })} className="h-4 w-4 rounded border-slate-300" />
+              Auto-import every 10 minutes
+            </label>
             <div className="flex flex-wrap items-center gap-2">
               <button className="btn-primary" onClick={save} disabled={busy}>Save settings</button>
               <button className="btn-ghost" onClick={importNow} disabled={importing}>{importing ? 'Importing…' : 'Import now'}</button>
             </div>
-            {result && <p className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">✅ {result.imported} imported · {result.duplicates} duplicate(s) skipped · {result.skipped} row(s) skipped</p>}
+            {result && <p className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">✅ {result.imported} imported · {result.updated} updated · {result.duplicates} duplicate(s)</p>}
+            {f.push_token && (
+              <div className="space-y-2 rounded-xl border border-brand-200 bg-brand-50/60 p-4 text-xs leading-relaxed text-slate-700">
+                <p className="text-sm font-bold text-slate-800">⚡ Instant push — leads arrive in seconds</p>
+                <p>1. In your Google Sheet: <b>Extensions → Apps Script</b> → paste the code below (the CRM URL and token are already filled).</p>
+                <p>2. Click <b>Triggers → Add Trigger</b> → function <code>onFormSubmit</code> → event source <b>From spreadsheet</b> → event type <b>On form submit</b> → Save. Approve the permissions once.</p>
+                <div className="relative">
+                  <pre className="overflow-x-auto rounded-lg bg-slate-900 p-3 pr-10 text-[11px] text-emerald-200">{`function onFormSubmit(e) {
+  var row = {};
+  if (e.namedValues) { for (var k in e.namedValues) row[k] = e.namedValues[k][0]; }
+  else { (e.values || []).forEach(function (v, i) { row['col' + i] = v; }); }
+  UrlFetchApp.fetch('${window.location.origin}/api/sheets/push?token=${f.push_token}', { method: 'post', contentType: 'application/json', payload: JSON.stringify(row) });
+}`}</pre>
+                  <button
+                    className="absolute right-2 top-2 rounded-md bg-white/10 p-1.5 text-white hover:bg-white/20"
+                    title="Copy Apps Script"
+                    onClick={() => navigator.clipboard.writeText(`function onFormSubmit(e) {\n  var row = {};\n  if (e.namedValues) { for (var k in e.namedValues) row[k] = e.namedValues[k][0]; }\n  else { (e.values || []).forEach(function (v, i) { row['col' + i] = v; }); }\n  UrlFetchApp.fetch('${window.location.origin}/api/sheets/push?token=${f.push_token}', { method: 'post', contentType: 'application/json', payload: JSON.stringify(row) });\n}`).then(() => toast('Apps Script copied — paste it in your sheet')).catch(() => {})}
+                  ><Copy size={13} /></button>
+                </div>
+                <p>If your sheet is filled manually (not via Google Forms), run the function once from the editor with a quick trigger setup: Apps Script → add the same code in a function named <code>importAll</code> reading rows — or just use the 10-minute auto-import.</p>
+              </div>
+            )}
           </div>
         </>
       )}

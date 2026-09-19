@@ -138,6 +138,23 @@ let smtpId
 { const { status, data } = await req('POST', '/leads/import', { rows: [] })
   ok('validation: empty import rejected cleanly', status === 400 && !!data.error) }
 
+{ // instant sheet push (token-protected) + duplicate handling
+  const { status, data: sh } = await req('GET', '/settings/sheets')
+  ok('sheets: settings + push token', status === 200 && !!sh.push_token)
+  if (sh.push_token) {
+    const bad = await fetch(`${BASE}/api/sheets/push?token=wrong`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+    ok('sheets: push rejects bad token', bad.status === 403)
+    const r = await fetch(`${BASE}/api/sheets/push?token=${sh.push_token}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ 'First Name': 'Push', 'Last Name': 'Test', 'Email': `push${Date.now()}@test.com`, 'Phone': '5550303' }) })
+    const j = await r.json()
+    ok('sheets: instant push imports row', r.status === 200 && j.inserted === 1, JSON.stringify(j).slice(0, 120))
+    const r2 = await fetch(`${BASE}/api/sheets/push?token=${sh.push_token}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ 'First Name': 'Push', 'Last Name': 'Test', 'Email': `push${Date.now()}@test.com`, 'Phone': '5550303' }) })
+    const j2 = await r2.json()
+    ok('sheets: duplicate detected on second push', r2.status === 200 && j2.duplicates === 1, JSON.stringify(j2).slice(0, 120))
+    const lst = await req('GET', '/leads?limit=200')
+    for (const row of (lst.data.rows || []).filter((x) => String(x.phone).slice(-7) === '5550303')) await req('DELETE', `/leads/${row.id}`)
+  }
+}
+
 // cleanup
 await req('DELETE', `/leads/${leadId}`)
 if (smtpId) await req('DELETE', `/smtp/${smtpId}`)

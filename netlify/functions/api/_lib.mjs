@@ -493,42 +493,94 @@ export async function syncGoogleSheet() {
   const token = await driveAccessToken(creds.client_email, creds.private_key)
   const exportUrl = `https://docs.google.com/spreadsheets/d/${parsed.sheetId}/export?format=csv${parsed.gid ? `&gid=${parsed.gid}` : ''}`
   const res = await fetch(exportUrl, { headers: { authorization: `Bearer ${token}` }, redirect: 'follow' })
-  if (!res.ok) throw new Error(`Google returned ${res.status} — make sure the sheet is shared with the service account email (Editor not required, Viewer is enough)`)
+  if (!res.ok) throw new Error(`Google returned ${res.status} — share the sheet with the service account email (Viewer is enough)`)
   const rows = parseCsv(await res.text())
-  if (rows.length < 2) return { imported: 0, duplicates: 0, skipped: 0 }
-  const headers = rows[0]
-  const map = {}
-  for (const [field, re] of HEADER_MATCHERS) {
-    const h = headers.find((x) => re.test(String(x || '')))
-    if (h) map[field] = h
+  if (rows.length < 2) return { imported: 0, updated: 0, duplicates: 0 }
+  const [headers, ...body] = rows
+  const mapped = body.map((r) => Object.fromEntries(headers.map((h, i) => [h, r[i]])))
+  return importLeadRows(mapped, { source: 'sheet', campaign: 'Google Sheet', assignedTo: null, dupPolicy: cfg.dup_policy || 'skip' })
+}
+
+// ── shared lead import engine (CSV, sheet sync, instant push) ──
+const IMPORT_FIELDS = new Set(['first_name','last_name','email','phone','dob','state','city','address','zip','disability','notes','campaign','worked_5_of_10','receiving_benefits','duration_12m','has_attorney'])
+const truthyVal = (v) => ['true', 'yes', 'y', '1', 'x'].includes(String(v).trim().toLowerCase())
+
+function mapRow(r) {
+  const out = {}
+  for (const k of Object.keys(r)) if (IMPORT_FIELDS.has(k)) out[k] = r[k]
+  for (const k of Object.keys(r)) {
+    if (IMPORT_FIELDS.has(k)) continue
+    for (const [field, re] of HEADER_MATCHERS) {
+      if (re.test(k) && out[field] === undefined) { out[field] = r[k]; break }
+    }
   }
-  const { data: existing } = await service.from('leads').select('phone,email')
-  const seen = new Set((existing || []).flatMap((l) => [String(l.phone || '').replace(/\D/g, '').slice(-10), (l.email || '').toLowerCase()]).filter(Boolean))
-  const norm = (p) => String(p || '').replace(/\D/g, '').slice(-10)
-  const toInsert = []
+  return out
+}
+
+export async function importLeadRows(rows, { source = 'import', campaign = null, assignedTo = null, dupPolicy = 'skip' } = {}) {
+  const list = (Array.isArray(rows) ? rows : []).filter((r) => r && typeof r === 'object').slice(0, 10000)
+  if (!list.length) return { inserted: 0, updated: 0, duplicates: 0 }
+  const clean = (v, max = 500) => {
+    if (v === undefined || v === null) return null
+    const s = String(v).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim()
+    return s ? s.slice(0, max) : null
+  }
+  const { data: existing } = await service.from('leads').select('id,phone,email')
+  const index = new Map()
+  for (const l of existing || []) {
+    const p = String(l.phone || '').replace(/\D/g, '').slice(-10)
+    const e = (l.email || '').toLowerCase()
+    if (p) index.set('p' + p, l.id)
+    if (e) index.set('e' + e, l.id)
+  }
+  const toInsert = [], updates = []
   let duplicates = 0
-  for (const r of rows.slice(1)) {
-    const get = (f) => (map[f] ? String(r[headers.indexOf(map[f])] ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim().slice(0, 500) : '')
-    const phoneN = norm(get('phone'))
-    const emailL = get('email').toLowerCase()
-    const key = phoneN || emailL
-    if (!key) { duplicates++; continue }
-    if (seen.has(key)) { duplicates++; continue }
-    seen.add(phoneN); if (emailL) seen.add(emailL)
+  for (const raw of list) {
+    const r = mapRow(raw)
+    const phoneKey = clean(r.phone, 30) ? 'p' + String(r.phone).replace(/\D/g, '').slice(-10) : null
+    const emailL = (clean(r.email, 200) || '').toLowerCase()
+    const emailKey = emailL ? 'e' + emailL : null
+    const hitId = (phoneKey && index.get(phoneKey)) || (emailKey && index.get(emailKey)) || null
+    if (hitId) {
+      if (dupPolicy === 'update' && hitId !== 'new') {
+        const values = {}
+        for (const f of ['first_name', 'last_name', 'dob', 'state', 'city', 'address', 'zip', 'disability', 'notes']) {
+          const v = clean(r[f], f === 'notes' || f === 'disability' ? 2000 : 300)
+          if (v) values[f] = f === 'email' ? v.toLowerCase() : v
+        }
+        if (Object.keys(values).length) updates.push({ id: hitId, values })
+      }
+      duplicates++
+      continue
+    }
+    if (phoneKey) index.set(phoneKey, 'new')
+    if (emailKey) index.set(emailKey, 'new')
     toInsert.push({
-      first_name: get('first_name').slice(0, 100), last_name: get('last_name').slice(0, 100),
-      email: emailL || null, phone: get('phone').slice(0, 30) || null,
-      dob: get('dob') || null, state: get('state').slice(0, 10) || null, city: get('city').slice(0, 120) || null,
-      address: get('address').slice(0, 300) || null, zip: get('zip').slice(0, 20) || null,
-      disability: get('disability').slice(0, 2000) || null, notes: get('notes').slice(0, 2000) || null,
-      source: 'sheet', campaign: 'Google Sheet', assigned_to: null,
+      first_name: clean(r.first_name, 100) || '', last_name: clean(r.last_name, 100) || '',
+      email: emailL || null, phone: clean(r.phone, 30) || null,
+      dob: clean(r.dob, 20) || null, state: clean(r.state, 10), city: clean(r.city, 120),
+      address: clean(r.address, 300), zip: clean(r.zip, 20),
+      worked_5_of_10: r.worked_5_of_10 != null && r.worked_5_of_10 !== '' ? truthyVal(r.worked_5_of_10) : null,
+      receiving_benefits: r.receiving_benefits != null && r.receiving_benefits !== '' ? truthyVal(r.receiving_benefits) : null,
+      duration_12m: r.duration_12m != null && r.duration_12m !== '' ? truthyVal(r.duration_12m) : null,
+      has_attorney: r.has_attorney != null && r.has_attorney !== '' ? truthyVal(r.has_attorney) : null,
+      disability: clean(r.disability, 2000), notes: clean(r.notes, 2000),
+      campaign: campaign || clean(r.campaign, 200),
+      source, assigned_to: assignedTo,
     })
   }
-  let imported = 0
+  let inserted = 0
   for (let i = 0; i < toInsert.length; i += 200) {
-    const { error } = await service.from('leads').insert(toInsert.slice(i, i + 200))
+    const chunk = toInsert.slice(i, i + 200)
+    const { error } = await service.from('leads').insert(chunk)
     if (error) throw new Error(`Import failed: ${error.message}`)
-    imported += toInsert.slice(i, i + 200).length
+    inserted += chunk.length
   }
-  return { imported, duplicates, skipped: rows.length - 1 - toInsert.length - duplicates }
+  let updated = 0
+  for (const u of updates) {
+    const { error } = await service.from('leads').update({ ...u.values, updated_at: new Date().toISOString() }).eq('id', u.id)
+    if (!error) updated++
+    await logActivity(u.id, null, 'edited', 'Lead updated from import')
+  }
+  return { inserted, updated, duplicates }
 }
