@@ -9,6 +9,7 @@ import { useToast, Modal, Empty, Spinner, PageError, fmtDate } from '../ui'
 const TYPES = [
   { value: 'frontend', label: 'Front-End script' },
   { value: 'verification', label: 'Verification script' },
+  { value: 'intake', label: 'Intake script' },
   { value: 'general', label: 'General script' },
 ]
 
@@ -116,6 +117,48 @@ export default function Scripts() {
           <button className="btn-danger" onClick={del} disabled={deleting}>{deleting ? 'Deleting…' : 'Delete'}</button>
         </div>
       </Modal>
+
+      {admin && <RebuttalsManager />}
+    </div>
+  )
+}
+
+// ── rebuttals library (admin-managed, shown in the sticky panel) ──
+export function RebuttalsManager() {
+  const toast = useToast()
+  const [items, setItems] = useState(null)
+  const { run: save, busy } = useAction(async () => {
+    await api('/settings/rebuttals', { method: 'PUT', body: { rebuttals: items } })
+  }, { toast, successMsg: 'Rebuttals saved — live in the sticky panel instantly' })
+
+  useEffect(() => { api('/settings/rebuttals').then((d) => setItems(d.rebuttals || [])).catch((e) => toast(describeError(e), 'error')) }, [])
+
+  return (
+    <div className="card p-5 mt-8">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-800">Rebuttals library</h2>
+          <p className="text-xs text-slate-500">Shows in the sticky scripts panel on every page — one glance, objection answered.</p>
+        </div>
+        <div className="flex gap-2">
+          <button className="btn-ghost !py-1.5 text-xs" onClick={() => setItems((x) => [...x, { title: '', body: '' }])}><Plus size={13} /> Add rebuttal</button>
+          <button className="btn-primary !py-1.5 text-xs" onClick={save} disabled={busy || !items}>{busy ? 'Saving…' : 'Save rebuttals'}</button>
+        </div>
+      </div>
+      {!items ? <Spinner className="h-5 w-5" /> : (
+        <div className="space-y-3">
+          {items.map((r, i) => (
+            <div key={i} className="rounded-xl bg-slate-50 p-3">
+              <div className="flex items-center gap-2">
+                <input className="input !py-1.5 text-sm font-semibold" value={r.title} onChange={(e) => setItems((x) => x.map((y, j) => (j === i ? { ...y, title: e.target.value } : y)))} placeholder='Objection — e.g. "How much does this cost?"' />
+                <button className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-rose-500" onClick={() => setItems((x) => x.filter((_, j) => j !== i))}><Trash2 size={14} /></button>
+              </div>
+              <textarea className="input mt-2 text-xs" rows={3} value={r.body} onChange={(e) => setItems((x) => x.map((y, j) => (j === i ? { ...y, body: e.target.value } : y)))} placeholder="The rebuttal response…" />
+            </div>
+          ))}
+          {items.length === 0 && <p className="text-center text-sm text-slate-400">No rebuttals — add the first one.</p>}
+        </div>
+      )}
     </div>
   )
 }

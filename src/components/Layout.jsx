@@ -227,6 +227,72 @@ export default function Layout({ children }) {
         </header>
         <main className="flex-1 px-4 py-6 lg:px-8">{children}</main>
       </div>
+
+      {/* sticky scripts + rebuttals — always one click away */}
+      <FloatingScripts />
     </div>
+  )
+}
+
+const SCRIPT_TABS = [
+  ['frontend', 'Front-End'], ['verification', 'Verification'], ['intake', 'Intake'], ['general', 'General'],
+]
+
+function FloatingScripts() {
+  const [open, setOpen] = useState(false)
+  const [tab, setTab] = useState('frontend')
+  const [scripts, setScripts] = useState([])
+  const [rebuttals, setRebuttals] = useState([])
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    api('/scripts').then((d) => setScripts(d.scripts || [])).catch(() => {})
+    api('/settings/rebuttals').then((d) => setRebuttals(d.rebuttals || [])).catch(() => {})
+  }, [open])
+
+  const current = scripts.find((s) => s.type === tab)
+  const filtered = rebuttals.filter((r) => (r.title + ' ' + r.body).toLowerCase().includes(search.toLowerCase()))
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="fixed bottom-5 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg shadow-brand-600/30 transition hover:bg-brand-700"
+        title="Scripts & rebuttals (sticky panel)"
+      >
+        {open ? <X size={20} /> : <ScrollText size={20} />}
+      </button>
+      {open && (
+        <div className="fixed bottom-20 right-5 z-40 flex h-[70vh] w-[420px] max-w-[92vw] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+          <div className="flex flex-wrap gap-1 border-b border-slate-100 p-2">
+            {SCRIPT_TABS.map(([v, label]) => (
+              <button key={v} onClick={() => setTab(v)} className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold ${tab === v ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{label}</button>
+            ))}
+            <button onClick={() => setTab('rebuttals')} className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold ${tab === 'rebuttals' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>Rebuttals</button>
+          </div>
+          {tab === 'rebuttals' ? (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="p-3 pb-2">
+                <input className="input !py-1.5 text-sm" placeholder="Search rebuttals…" value={search} onChange={(e) => setSearch(e.target.value)} autoFocus />
+              </div>
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 pb-4">
+                {filtered.length === 0 && <p className="py-6 text-center text-sm text-slate-400">{rebuttals.length ? 'No match' : 'No rebuttals yet — add them in Admin → Scripts'}</p>}
+                {filtered.map((r) => (
+                  <div key={r.title} className="rounded-xl bg-slate-50 p-3">
+                    <p className="text-sm font-semibold text-slate-800">{r.title}</p>
+                    <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-slate-600">{r.body}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <pre className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap bg-slate-900 p-4 text-[12.5px] leading-relaxed text-slate-100">
+              {current ? current.content : 'No script of this type yet — add one under Scripts.'}
+            </pre>
+          )}
+        </div>
+      )}
+    </>
   )
 }

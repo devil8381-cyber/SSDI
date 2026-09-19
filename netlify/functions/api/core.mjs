@@ -77,6 +77,25 @@ route('PUT', 'settings/auto-assign', async ({ req, body }) => {
   return json({ ok: true, mode: body.mode })
 })
 
+// ── rebuttals library (agents read; admin edits) ──────────────
+route('GET', 'settings/rebuttals', async ({ req }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  return json({ rebuttals: (await getSetting('rebuttals')) || [] })
+})
+
+route('PUT', 'settings/rebuttals', async ({ req, body }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  const rebuttals = (Array.isArray(body.rebuttals) ? body.rebuttals : [])
+    .filter((r) => r && String(r.title || '').trim() && String(r.body || '').trim())
+    .slice(0, 50)
+    .map((r) => ({ title: String(r.title).trim().slice(0, 200), body: String(r.body).trim().slice(0, 4000) }))
+  await setSetting('rebuttals', rebuttals)
+  return json({ ok: true, rebuttals })
+})
+
 // ── follow-up rules (disposition → auto-task) ─────────────────
 route('GET', 'settings/followup-rules', async ({ req }) => {
   const s = await getSession(req)

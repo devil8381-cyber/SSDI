@@ -9,9 +9,10 @@ const isAdmin = (p) => p?.role === 'admin'
 
 const LEAD_FIELDS = [
   'first_name', 'last_name', 'email', 'phone', 'dob', 'state', 'city',
+  'address', 'zip',
   'worked_5_of_10', 'receiving_benefits', 'duration_12m', 'has_attorney', 'disability', 'notes',
 ]
-const TEXT_FIELDS = ['first_name', 'last_name', 'email', 'phone', 'state', 'city', 'disability', 'notes']
+const TEXT_FIELDS = ['first_name', 'last_name', 'email', 'phone', 'state', 'city', 'address', 'zip', 'disability', 'notes']
 
 // Server-side normalization: trim, strip control chars, cap length.
 // Mirrors the client's sanitizeText so malformed payloads from any source
@@ -191,6 +192,16 @@ route('PATCH', 'leads/:id', async ({ req, params, body, context }) => {
   for (const f of LEAD_FIELDS) if (f in body) patch[f] = body[f] === '' ? null : body[f]
   cleanLeadPatch(patch)
   if ('next_followup_at' in body) patch.next_followup_at = body.next_followup_at || null
+  // structured SSDI intake questionnaire (jsonb of question-id → answer)
+  if ('intake' in body) {
+    const v = body.intake
+    if (v === null) patch.intake = {}
+    else if (typeof v === 'object' && !Array.isArray(v)) {
+      patch.intake = Object.fromEntries(
+        Object.entries(v).slice(0, 100).map(([k, val]) => [String(k).slice(0, 40), String(val ?? '').slice(0, 2000)])
+      )
+    }
+  }
 
   let activityType = 'edited'
   let activityTitle = 'Lead details updated'

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, ArrowRight, Mail, FilePlus2, Trash2, Save, Upload, Play, Copy, Download, Plus,
-  CheckCircle2, Circle, FileText, Mic, Send, Clock, Zap, Activity, Loader2, Phone, MessageSquare,
+  CheckCircle2, Circle, FileText, Mic, Send, Clock, Zap, Activity, Loader2, Phone, MessageSquare, NotebookPen,
 } from 'lucide-react'
 import { api, describeError } from '../api'
 import { useAuth } from '../auth'
@@ -10,13 +10,14 @@ import { useAction, useDirtyGuard } from '../lib/hooks'
 import { validateForm, emailRule, phoneRule, maxLen, sanitizeText } from '../lib/validate'
 import { renderTemplate } from '../lib/render'
 import { useToast, Modal, Spinner, Empty, PageError, DispositionBadge, fmtDateTime, ageFrom } from '../ui'
-import { DISPOSITIONS, CRITERIA_REASONS, STATES, DOC_TYPES, SMTP_PURPOSES, TASK_TYPES } from '../config'
+import { DISPOSITIONS, CRITERIA_REASONS, STATES, DOC_TYPES, SMTP_PURPOSES, TASK_TYPES, INTAKE_SECTIONS } from '../config'
 
 // Only these fields are user-editable in the info form. Dirty detection compares
 // exactly this list so server-side metadata (updated_at, disposition changes by
 // teammates…) never falsely marks the form dirty.
 const EDIT_KEYS = [
   'first_name', 'last_name', 'email', 'phone', 'dob', 'state', 'city',
+  'address', 'zip',
   'worked_5_of_10', 'receiving_benefits', 'duration_12m', 'has_attorney',
   'disability', 'notes', 'next_followup_at',
 ]
@@ -308,6 +309,8 @@ export default function LeadDetail() {
         <div className="space-y-5 xl:col-span-2">
           <InfoCard form={form} set={set} saveInfo={saveInfo} saving={saving} />
 
+          <IntakeCard key={lead.id} lead={lead} onSaved={load} />
+
           <RecordingsCard recordings={data.recordings} onOpen={setViewer} onChange={load} leadId={id} />
 
           <DocumentsCard docs={data.documents} requests={data.docRequests} />
@@ -419,6 +422,8 @@ function InfoCard({ form, set, saveInfo, saving }) {
           <select className="input" value={form.state || ''} onChange={set('state')}><option value="">—</option>{STATES.map((s) => <option key={s}>{s}</option>)}</select>
         </div>
         <div><label className="label">City</label><input className="input" value={form.city || ''} onChange={set('city')} /></div>
+        <div className="col-span-2"><label className="label">Address (street, apt)</label><input className="input" value={form.address || ''} onChange={set('address')} placeholder="123 Main St, Apt 4" /></div>
+        <div><label className="label">ZIP</label><input className="input" value={form.zip || ''} onChange={set('zip')} /></div>
         <div><label className="label">Next follow-up</label>
           <input className="input" type="datetime-local" value={toLocalInputValue(form.next_followup_at)} onChange={(e) => set('next_followup_at')({ target: { value: e.target.value } })} />
         </div>
@@ -822,6 +827,76 @@ function QuickTask({ onAdd, busy }) {
           <button className="btn-primary w-full !py-1.5 text-xs" onClick={submit} disabled={busy || !title.trim()}>{busy ? 'Adding…' : 'Add task'}</button>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── SSDI intake questionnaire (33 questions, filled on the call) ──
+function IntakeCard({ lead, onSaved }) {
+  const toast = useToast()
+  const [data, setData] = useState(lead.intake || {})
+  const [dirty, setDirty] = useState(false)
+
+  const initial = lead.intake || {}
+  const setAnswer = (qid, value) => {
+    setData((d) => ({ ...d, [qid]: value }))
+    setDirty(true)
+  }
+  const setYesNo = (qid, prefix) => {
+    setData((d) => ({ ...d, [qid]: d[qid] && String(d[qid]).startsWith(prefix) ? d[qid] : prefix + ' ' }))
+    setDirty(true)
+  }
+  const { run: save, busy } = useAction(async () => {
+    // trim every answer before persisting
+    const clean = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, sanitizeText(v, 2000)]))
+    await api(`/leads/${lead.id}`, { method: 'PATCH', body: { intake: clean } })
+    setDirty(false)
+  }, { toast, successMsg: 'Intake saved to the lead file', onSaved })
+
+  const answered = Object.values(data).filter((v) => String(v || '').trim()).length
+  const totalQ = INTAKE_SECTIONS.reduce((n, s) => n + s.questions.length, 0)
+
+  return (
+    <div className="card p-5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-700"><NotebookPen size={15} className="text-brand-600" /> SSDI Intake — fill while on the call</h2>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-400">{answered}/{totalQ} answered</span>
+          <button className="btn-primary !py-1.5 text-xs" onClick={save} disabled={busy || !dirty}>
+            {busy ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} {busy ? 'Saving…' : 'Save intake'}
+          </button>
+        </div>
+      </div>
+      {dirty && <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">Unsaved intake answers — click Save intake before leaving.</p>}
+      <div className="space-y-4">
+        {INTAKE_SECTIONS.map((section) => (
+          <details key={section.name} open={section === INTAKE_SECTIONS[0]} className="rounded-xl border border-slate-200">
+            <summary className="cursor-pointer select-none px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">{section.name}</summary>
+            <div className="space-y-3 border-t border-slate-100 p-4">
+              {section.questions.map((q) => (
+                <div key={q.id}>
+                  <label className="label !mb-1">{q.q}</label>
+                  {q.type === 'yesno' && (
+                    <div className="mb-1 flex gap-1">
+                      {['Yes,', 'No,'].map((p) => (
+                        <button key={p} type="button" onClick={() => setYesNo(q.id, p)}
+                          className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${String(data[q.id] || '').startsWith(p) ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{p.replace(',', '')}</button>
+                      ))}
+                    </div>
+                  )}
+                  <textarea
+                    className="input text-sm"
+                    rows={2}
+                    value={data[q.id] || ''}
+                    onChange={(e) => setAnswer(q.id, e.target.value)}
+                    placeholder="Their answer…"
+                  />
+                </div>
+              ))}
+            </div>
+          </details>
+        ))}
+      </div>
     </div>
   )
 }
