@@ -108,8 +108,8 @@ function Shell({ children }) {
         <div className="mb-5 flex items-center justify-center gap-2.5">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 text-white"><Headphones size={20} /></div>
           <div>
-            <p className="text-base font-bold text-white">LeadDesk</p>
-            <p className="text-[10px] font-medium uppercase tracking-widest text-slate-400">Secure document portal</p>
+            <p className="text-sm font-bold text-white">American Benefits Advocates</p>
+            <p className="text-[10px] font-medium uppercase tracking-widest text-slate-400">SECURE DOCUMENT PORTAL</p>
           </div>
         </div>
         <div className="card space-y-1 rounded-2xl p-6">{children}</div>

@@ -425,12 +425,12 @@ route('POST', 'queue/email', async ({ req, url }) => {
     `<li><b>${i.first_name} ${i.last_name}</b> — ${i.reason}${i.due_at ? ` (due ${new Date(i.due_at).toLocaleString()})` : ''} — ${i.phone || 'no phone'}</li>`
   ).join('')
   const html = `
-    <h2>Your LeadDesk plan for today</h2>
+    <h2>Your ABA plan for today</h2>
     <p><b>${q.counts.total}</b> leads in your queue: ${q.counts.overdue} overdue, ${q.counts.dueToday} due today, ${q.counts.fresh} fresh.</p>
     <ol>${rows}</ol>
-    <p><a href="${baseUrl(url)}">Open LeadDesk</a></p>`
+    <p><a href="${baseUrl(url)}">Open ABA</a></p>`
   try {
-    await sendSystemEmail({ to: s.profile.email || s.user.email, subject: `LeadDesk — ${q.counts.total} leads on today's plan`, html })
+    await sendSystemEmail({ to: s.profile.email || s.user.email, subject: `ABA — ${q.counts.total} leads on today's plan`, html })
   } catch (e) {
     return fail(e.message, 400)
   }

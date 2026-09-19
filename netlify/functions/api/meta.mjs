@@ -47,7 +47,7 @@ route('POST', 'meta/test', async ({ req }) => {
   if (!isAdmin(s.profile)) return fail('Admin only', 403)
   const meta = metaSecrets(await getSetting('meta'))
   const result = await sendCapi(meta, {
-    eventName: 'LeadDesk_Test',
+    eventName: 'ABA_Test',
     lead: { id: crypto.randomUUID(), email: 'test@example.com', phone: '+15550000000' },
     custom: { note: 'CRM connectivity test' },
   })

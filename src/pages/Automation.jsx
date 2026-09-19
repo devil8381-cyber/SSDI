@@ -141,7 +141,7 @@ function RulesCard({ rules, setRules }) {
         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white"><CalendarClock size={18} /></div>
         <div>
           <h2 className="text-sm font-bold text-slate-800">Follow-up rules</h2>
-          <p className="text-xs text-slate-500">When an agent sets one of these dispositions, LeadDesk automatically creates the next task — so no lead is ever forgotten.</p>
+          <p className="text-xs text-slate-500">When an agent sets one of these dispositions, ABA automatically creates the next task — so no lead is ever forgotten.</p>
         </div>
       </div>
       {!rules ? <p className="py-4 text-center text-sm text-slate-400">Loading…</p> : (

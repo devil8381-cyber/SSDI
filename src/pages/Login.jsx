@@ -60,8 +60,8 @@ export default function Login() {
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/30">
             <Headphones size={28} />
           </div>
-          <h1 className="mt-4 text-2xl font-bold text-white">LeadDesk</h1>
-          <p className="mt-1 text-sm text-slate-400">Sales &amp; lead management for SSDI teams</p>
+          <h1 className="mt-4 text-center text-xl font-bold leading-tight text-white">American Benefits<br/>Advocates</h1>
+          <p className="mt-1 text-sm text-slate-400">Social Security Disability case management</p>
         </div>
         {checked && !dbReady && (
           <div className="mb-4 rounded-xl border border-rose-400/40 bg-rose-500/10 p-3 text-xs leading-relaxed text-rose-200">

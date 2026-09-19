@@ -133,8 +133,8 @@ export default function Layout({ children }) {
         <div className="flex items-center gap-2.5 px-5 py-5">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-white"><Headphones size={19} /></div>
           <div>
-            <p className="text-[15px] font-bold leading-tight text-white">LeadDesk</p>
-            <p className="text-[10px] font-medium uppercase tracking-widest text-slate-400">SSDI CRM</p>
+            <p className="text-[13px] font-bold leading-tight text-white">American Benefits<br/>Advocates</p>
+            <p className="text-[10px] font-medium uppercase tracking-widest text-slate-400">CASE MANAGEMENT</p>
           </div>
           <button className="ml-auto text-slate-400 lg:hidden" onClick={() => setSidebarOpen(false)}><X size={18} /></button>
         </div>

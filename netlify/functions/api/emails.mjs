@@ -97,8 +97,8 @@ route('POST', 'smtp/:id/test', async ({ req, params, body }) => {
     })
     await tr.sendMail({
       from: prof.from_name ? `"${prof.from_name}" <${prof.from_email}>` : prof.from_email,
-      to: body.to, subject: 'LeadDesk SMTP test — ' + prof.name,
-      html: `<p>This is a test email from your LeadDesk SMTP profile <b>${prof.name}</b> (${prof.purpose}).</p><p>If you received this, deliverability works. ✅</p>`,
+      to: body.to, subject: 'ABA SMTP test — ' + prof.name,
+      html: `<p>This is a test email from your ABA SMTP profile <b>${prof.name}</b> (${prof.purpose}).</p><p>If you received this, deliverability works. ✅</p>`,
     })
     return json({ ok: true })
   } catch (e) {

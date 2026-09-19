@@ -17,7 +17,7 @@ export default async () => {
       ).join('')
       await sendSystemEmail({
         to: u.email,
-        subject: `LeadDesk — ${q.counts.total} leads on today's plan`,
+        subject: `ABA — ${q.counts.total} leads on today's plan`,
         html: `<h2>Good morning, ${u.name || 'there'} 👋</h2>
           <p><b>${q.counts.total}</b> leads in your queue today: ${q.counts.overdue} overdue, ${q.counts.dueToday} due today, ${q.counts.fresh} fresh.</p>
           <ol>${rows}</ol>

@@ -111,7 +111,7 @@ function MetaCard() {
         <p className="mt-2 text-xs text-slate-500">{syncResult.error ? `Sync failed: ${syncResult.error}` : `Sync done — ${syncResult.processed} imported, ${syncResult.skipped} already in CRM`}</p>
       )}
       <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-relaxed text-amber-800">
-        <b>How quality signals work:</b> when an agent sets a disposition, LeadDesk sends <code>Lead_Qualified</code> to Meta for <b>Signed/Approved</b>, and <code>Lead_Disqualified</code> with the reason for <b>Criteria Not Met</b> (age, work history, already receiving benefits…). Events Manager → Events → your pixel shows them as custom events. Tip: also switch your instant forms to "Higher intent" and add a Date of Birth question — that alone filters a big share of bad age leads.
+        <b>How quality signals work:</b> when an agent sets a disposition, ABA sends <code>Lead_Qualified</code> to Meta for <b>Signed/Approved</b>, and <code>Lead_Disqualified</code> with the reason for <b>Criteria Not Met</b> (age, work history, already receiving benefits…). Events Manager → Events → your pixel shows them as custom events. Tip: also switch your instant forms to "Higher intent" and add a Date of Birth question — that alone filters a big share of bad age leads.
       </div>
     </div>
   )
