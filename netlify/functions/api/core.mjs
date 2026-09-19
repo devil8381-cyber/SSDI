@@ -585,7 +585,10 @@ route('PATCH', 'users/:id', async ({ req, params, body }) => {
   if ('role' in body) patch.role = body.role
   if ('is_active' in body) patch.is_active = !!body.is_active
   if ('phone' in body) patch.phone = body.phone ? String(body.phone).replace(/[^\d+()\- ]/g, '').slice(0, 30) : null
-  if ('max_leads' in body) patch.max_leads = body.max_leads === null || body.max_leads === '' ? null : Math.max(0, Math.min(100000, Number(body.max_leads) || 0))
+  if ('max_leads' in body) {
+    if (body.max_leads !== null && body.max_leads !== '' && !Number.isFinite(Number(body.max_leads))) return fail('Max leads must be a number')
+    patch.max_leads = body.max_leads === null || body.max_leads === '' ? null : Math.max(0, Math.min(100000, Math.round(Number(body.max_leads))))
+  }
   if (Object.keys(patch).length) await service.from('profiles').update(patch).eq('id', params.id)
   if (body.password) {
     const { error } = await service.auth.admin.updateUserById(params.id, { password: body.password })

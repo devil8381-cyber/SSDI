@@ -100,9 +100,24 @@ route('GET', 'leads', async ({ req, query }) => {
 route('POST', 'leads', async ({ req, body }) => {
   const s = await getSession(req)
   if (!s) return unauthorized()
+  // Required: at least one way to identify the person — an unreachable row
+  // only pollutes every list. Email format is checked server-side too.
+  const hasName = String(body.first_name || '').trim() || String(body.last_name || '').trim()
+  const hasContact = String(body.phone || '').trim() || String(body.email || '').trim()
+  if (!hasName && !hasContact) return fail('Enter at least a name, phone, or email for the lead')
+  if (body.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(body.email))) return fail("That email address doesn't look valid")
   const patch = { source: LEAD_SOURCES.includes(body.source) ? body.source : 'manual' }
   for (const f of LEAD_FIELDS) if (f in body) patch[f] = body[f] === '' ? null : body[f]
   cleanLeadPatch(patch)
+  // Duplicate guard: same phone AND same email (both present) = same person.
+  // Phone alone may repeat — households legitimately share numbers.
+  if (patch.phone && patch.email) {
+    const { data: dupe } = await service.from('leads').select('id, first_name, last_name').eq('phone', patch.phone).eq('email', patch.email).maybeSingle()
+    if (dupe) {
+      const who = [dupe.first_name, dupe.last_name].filter(Boolean).join(' ') || 'same phone & email'
+      return fail('This lead already exists (' + who + ')', 409)
+    }
+  }
   if (isAdmin(s.profile)) patch.assigned_to = body.assigned_to || (await pickAgentRoundRobin())
   else patch.assigned_to = s.user.id
   const { data, error } = await service.from('leads').insert(patch).select('*').single()

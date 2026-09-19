@@ -102,6 +102,8 @@ route('POST', 'smtp/:id/test', async ({ req, params, body }) => {
     })
     return json({ ok: true })
   } catch (e) {
-    return fail(`SMTP test failed: ${e.message}`, 500)
+    // A failed test = wrong host/credentials — the admin's config, not the
+    // server's fault. 400 keeps it a recoverable error in logs/monitoring.
+    return fail(`SMTP test failed: ${e.message}`, 400)
   }
 })

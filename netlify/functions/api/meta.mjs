@@ -64,11 +64,13 @@ route('GET', 'meta/webhook', async ({ query }) => {
 
 route('POST', 'meta/webhook', async ({ req, raw, context }) => {
   const meta = metaSecrets(await getSetting('meta'))
-  if (meta?.app_secret) {
-    const sig = (req.headers.get('x-hub-signature-256') || '')
-    const expected = 'sha256=' + crypto.createHmac('sha256', meta.app_secret).update(raw || '').digest('hex')
-    if (sig !== expected) return fail('Invalid signature', 403)
-  }
+  // Fail closed: without an app secret there is no way to prove a payload
+  // came from Meta, and this endpoint is publicly reachable — accepting
+  // unsigned payloads would let anyone inject fake leads.
+  if (!meta?.app_secret) return fail('Webhook is not configured yet — save the App secret in Admin → Integrations first', 503)
+  const sig = (req.headers.get('x-hub-signature-256') || '')
+  const expected = 'sha256=' + crypto.createHmac('sha256', meta.app_secret).update(raw || '').digest('hex')
+  if (sig !== expected) return fail('Invalid signature', 403)
   let payload
   try {
     payload = JSON.parse(raw || '{}')
