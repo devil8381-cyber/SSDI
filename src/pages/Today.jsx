@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Mail, Phone, Sunrise, Loader2 } from 'lucide-react'
 import { api, describeError } from '../api'
+import { getCallHref } from '../lib/call'
 import { useAction } from '../lib/hooks'
 import { useToast, Empty, PageError, Spinner, DispositionBadge, fmtDateTime } from '../ui'
 
@@ -83,7 +84,7 @@ export default function Today() {
                   <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${REASON_STYLES[g.reason] || 'bg-slate-100 text-slate-600'}`}>{g.reason}</span>
                   {i.phone && (
                     <a
-                      href={`tel:${i.phone.replace(/[^\d+]/g, '')}`}
+                      href={getCallHref(i.phone) || '#'}
                       className="btn-ghost !px-2 !py-1.5 text-xs !text-emerald-700"
                       onClick={async () => { try { await api(`/leads/${i.id}/call`, { method: 'POST' }) } catch { /* logging is best-effort */ } }}
                       title="Click to call (logged in timeline)"

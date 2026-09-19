@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Repeat, Zap, Loader2, CalendarClock, Target, Plus, Trash2, MailCheck } from 'lucide-react'
+import { Repeat, Zap, Loader2, CalendarClock, Target, Plus, Trash2, MailCheck, Phone } from 'lucide-react'
 import { api, describeError } from '../api'
 import { useAction } from '../lib/hooks'
 import { useToast, PageError } from '../ui'
@@ -85,6 +85,7 @@ export default function Automation() {
       <RulesCard rules={rules} setRules={setRules} />
       <TargetsCard targets={targets} setTargets={setTargets} />
       <WelcomeCard />
+      <CallingAppCard />
 
       <div className="card p-6">
         <div className="mb-4 flex items-center gap-2.5">
@@ -231,6 +232,50 @@ function WelcomeCard() {
         <span className={`text-sm font-medium ${enabled ? 'text-emerald-600' : 'text-slate-500'}`}>{enabled ? 'ON' : 'OFF'}</span>
         <span className="text-xs text-slate-400">Edit the wording under Templates → "Agent Assigned — Welcome (ABA)". Requires SMTP configured.</span>
       </div>
+    </div>
+  )
+}
+
+// ── calling app (click-to-call) ───────────────────────────────
+function CallingAppCard() {
+  const toast = useToast()
+  const [cfg, setCfg] = useState(null)
+  useEffect(() => { api('/settings/call').then((d) => setCfg(d)).catch((e) => toast(describeError(e), 'error')) }, [])
+  const { run: save, busy } = useAction(async () => {
+    await api('/settings/call', { method: 'PUT', body: cfg })
+    window.location.reload() // reload so every phone link picks up the new app
+  }, { toast, successMsg: 'Calling app saved' })
+  const radios = [
+    { v: 'tel', label: 'Default calling app (tel:)', hint: 'Best with Phound: set Phound as the Windows default for "tel:" links (Windows Settings → Apps → Default apps → choose defaults by link type → TEL → Phound).' },
+    { v: 'phound', label: 'Phound (phound:)', hint: 'Opens the Phound desktop app directly. Only works if Phound registered its phound: protocol on this PC.' },
+    { v: 'callto', label: 'callto:', hint: 'For softphones that register "callto:" (Skype-style).' },
+    { v: 'custom', label: 'Custom template', hint: 'Any link format — use {number} where the phone number goes, e.g. phound://dial/{number}' },
+  ]
+  if (!cfg) return null
+  return (
+    <div className="card p-6">
+      <div className="mb-3 flex items-center gap-2.5">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-800 text-white"><Phone size={18} /></div>
+        <div>
+          <h2 className="text-sm font-bold text-slate-800">Calling app (click-to-call)</h2>
+          <p className="text-xs text-slate-500">Which app opens when an agent clicks a phone number anywhere in the CRM.</p>
+        </div>
+      </div>
+      <div className="space-y-2">
+        {radios.map((r) => (
+          <label key={r.v} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${cfg.scheme === r.v ? 'border-brand-500 bg-brand-50' : 'border-slate-200'}`}>
+            <input type="radio" name="callapp" checked={cfg.scheme === r.v} onChange={() => setCfg({ ...cfg, scheme: r.v })} className="mt-0.5 h-4 w-4" />
+            <span>
+              <span className="block text-sm font-medium text-slate-800">{r.label}</span>
+              <span className="block text-xs text-slate-500">{r.hint}</span>
+              {r.v === 'custom' && cfg.scheme === 'custom' && (
+                <input className="input mt-2 font-mono text-xs" value={cfg.template || ''} onChange={(e) => setCfg({ ...cfg, template: e.target.value })} placeholder="phound://dial/{number}" />
+              )}
+            </span>
+          </label>
+        ))}
+      </div>
+      <button className="btn-primary mt-3" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save calling app'}</button>
     </div>
   )
 }

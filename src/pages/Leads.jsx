@@ -4,6 +4,7 @@ import Papa from 'papaparse'
 import { Search, Plus, Upload, Download, UserPlus, ChevronLeft, ChevronRight, Users2 } from 'lucide-react'
 import { api, describeError } from '../api'
 import { useAuth } from '../auth'
+import { getCallHref } from '../lib/call'
 import { useDebounced, useLatestRequest, useAction } from '../lib/hooks'
 import { validateForm, required, emailRule, phoneRule, sanitizeText } from '../lib/validate'
 import { useToast, Modal, DispositionBadge, Empty, Spinner, PageError, ageFrom, leadName, fmtDate } from '../ui'
@@ -270,7 +271,7 @@ export default function Leads() {
                       </td>
                       <td className="td text-slate-600" onClick={(e) => e.stopPropagation()}>
                         {r.phone
-                          ? <a href={`tel:${r.phone.replace(/[^\d+]/g, '')}`} className="hover:text-brand-600 hover:underline" title="Click to call">{r.phone}</a>
+                          ? <a href={getCallHref(r.phone) || '#'} className="hover:text-brand-600 hover:underline" title="Click to call">{r.phone}</a>
                           : '—'}
                       </td>
                       <td className="td text-slate-600">{age ?? '—'}</td>

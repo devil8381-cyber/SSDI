@@ -9,6 +9,7 @@ import { useAuth } from '../auth'
 import { useAction, useDirtyGuard } from '../lib/hooks'
 import { validateForm, emailRule, phoneRule, maxLen, sanitizeText } from '../lib/validate'
 import { renderTemplate } from '../lib/render'
+import { getCallHref } from '../lib/call'
 import { useToast, Modal, Spinner, Empty, PageError, DispositionBadge, fmtDateTime, ageFrom } from '../ui'
 import { DISPOSITIONS, CRITERIA_REASONS, STATES, DOC_TYPES, SMTP_PURPOSES, TASK_TYPES, INTAKE_SECTIONS } from '../config'
 
@@ -265,7 +266,7 @@ export default function LeadDetail() {
         <div className="flex flex-wrap gap-2">
           {lead.phone && (
             <a
-              href={`tel:${lead.phone.replace(/[^\d+]/g, '')}`}
+              href={getCallHref(lead.phone) || '#'}
               onClick={() => logCall()}
               className="btn-ghost !border-emerald-200 !text-emerald-700 hover:!bg-emerald-50"
               title="Opens your dialer / softphone and logs the call in the timeline"

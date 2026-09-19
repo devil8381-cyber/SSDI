@@ -97,6 +97,25 @@ route('PUT', 'settings/rebuttals', async ({ req, body }) => {
   return json({ ok: true, rebuttals })
 })
 
+// ── calling app (click-to-call scheme) ────────────────────────
+route('GET', 'settings/call', async ({ req }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  const cfg = (await getSetting('call')) || { scheme: 'tel', template: '' }
+  return json({ scheme: cfg.scheme || 'tel', template: cfg.template || '' })
+})
+route('PUT', 'settings/call', async ({ req, body }) => {
+  const s = await getSession(req)
+  if (!s) return unauthorized()
+  if (!isAdmin(s.profile)) return fail('Admin only', 403)
+  if (!['tel', 'phound', 'callto', 'custom'].includes(body.scheme)) return fail('Unknown calling app')
+  if (body.scheme === 'custom' && !String(body.template || '').includes('{number}')) {
+    return fail('Custom template must contain {number}')
+  }
+  await setSetting('call', { scheme: body.scheme, template: String(body.template || '').slice(0, 200) })
+  return json({ ok: true, scheme: body.scheme, template: body.template || '' })
+})
+
 // ── welcome email toggle ──────────────────────────────────────
 route('GET', 'settings/welcome-email', async ({ req }) => {
   const s = await getSession(req)

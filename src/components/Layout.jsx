@@ -7,6 +7,7 @@ import {
 import { api } from '../api'
 import { useAuth } from '../auth'
 import { useOnline, useDebounced } from '../lib/hooks'
+import { setCallConfig } from '../lib/call'
 import { fmtDateTime, leadName, DispositionBadge } from '../ui'
 
 const NAV = [
@@ -33,6 +34,11 @@ export default function Layout({ children }) {
   const [notifs, setNotifs] = useState([])
   const [notifOpen, setNotifOpen] = useState(false)
   const bellRef = useRef(null)
+
+  // click-to-call config (which app opens on phone-number clicks)
+  useEffect(() => {
+    api('/settings/call').then((d) => setCallConfig(d)).catch(() => {})
+  }, [])
 
   // Active-time heartbeat: only counts while the tab is visible AND we're
   // online, so offline time never inflates "active" metrics.
