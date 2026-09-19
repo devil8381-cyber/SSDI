@@ -99,8 +99,16 @@ function RequireAdmin() {
   return <Outlet />
 }
 
+// /login bounces signed-in users straight to the dashboard — otherwise a
+// successful sign-in would leave them staring at the login form.
+function LoginRoute() {
+  const { session, profile, loading } = useAuth()
+  if (!loading && session && profile) return <Navigate to="/" replace />
+  return <Login />
+}
+
 const router = createBrowserRouter([
-  { path: '/login', element: <Login /> },
+  { path: '/login', element: <LoginRoute /> },
   { path: '/upload/:token', element: <ClaimantUpload />, errorElement: <RouteError /> },
   {
     element: <RequireAuth />,

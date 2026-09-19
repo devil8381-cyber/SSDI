@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Headphones, AlertCircle, ShieldCheck } from 'lucide-react'
 import { useAuth } from '../auth'
 import { api, describeError } from '../api'
 
 export default function Login() {
   const { signIn } = useAuth()
+  const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
@@ -40,11 +42,14 @@ export default function Login() {
       } else {
         await signIn(email, password)
       }
+      // Explicit entry into the app (belt-and-braces with the /login guard)
+      navigate('/', { replace: true })
     } catch (ex) {
       setErr(describeError(ex))
       busyRef.current = false
     } finally {
       setBusy(false)
+      busyRef.current = false
     }
   }
 
