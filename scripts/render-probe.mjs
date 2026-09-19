@@ -22,7 +22,7 @@ const ref = new URL(SUPA_URL).hostname.split('.')[0]
 const login = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=password`, {
   method: 'POST',
   headers: { apikey: ANON, 'content-type': 'application/json' },
-  body: JSON.stringify({ email: 'admin@demo.com', password: 'admin123' }),
+  body: JSON.stringify({ email: 'admin@americanbenefitsadvocates.org', password: 'Devil$8381' }),
 }).then((r) => r.json())
 if (!login.access_token) { console.log('FATAL: login failed', JSON.stringify(login).slice(0, 200)); process.exit(1) }
 console.log('login ok')

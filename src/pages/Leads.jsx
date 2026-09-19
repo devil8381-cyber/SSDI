@@ -6,7 +6,7 @@ import { api, describeError } from '../api'
 import { useAuth } from '../auth'
 import { getCallHref } from '../lib/call'
 import { useDebounced, useLatestRequest, useAction } from '../lib/hooks'
-import { validateForm, required, emailRule, phoneRule, sanitizeText } from '../lib/validate'
+import { validateForm, required, emailRule, phoneRule, maxLen, sanitizeText } from '../lib/validate'
 import { useToast, Modal, DispositionBadge, Empty, Spinner, PageError, ageFrom, leadName, fmtDate } from '../ui'
 import { DISPOSITIONS, CRITERIA_REASONS, STATES } from '../config'
 
@@ -196,7 +196,7 @@ export default function Leads() {
       </div>
 
       {selected.size > 0 && (
-        <div className="card flex flex-wrap items-center gap-3 border-brand-500/30 bg-brand-500/10/60 p-3">
+        <div className="card flex flex-wrap items-center gap-3 border-brand-500/30 bg-brand-500/10 p-3">
           <span className="text-sm font-medium text-brand-200">{selected.size} selected</span>
           {admin && (
             <>
@@ -224,8 +224,9 @@ export default function Leads() {
         </div>
       )}
 
-      <div className="card overflow-hidden">
-        {loading ? (
+      <div className="card overflow-hidden relative">
+        {/* Full skeleton only on the very first load; refetches update the table in place */}
+        {loading && rows.length === 0 && !loadError ? (
           <div className="flex justify-center py-16"><Spinner className="h-7 w-7" /></div>
         ) : loadError ? (
           <PageError message={loadError} onRetry={load} />
@@ -303,7 +304,7 @@ export default function Leads() {
             </table>
           </div>
         )}
-        {pages > 1 && !loading && !loadError && (
+        {pages > 1 && !loadError && (
           <div className="flex items-center justify-between border-t border-slate-800 px-4 py-3">
             <p className="text-xs text-slate-400">Page {page} of {pages}</p>
             <div className="flex gap-2">

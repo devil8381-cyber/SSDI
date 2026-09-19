@@ -25,9 +25,16 @@ async function login(email, password) {
   if (!r.access_token) throw new Error(`login failed for ${email}`)
   return r.access_token
 }
-const admin = await login('admin@demo.com', 'admin123')
-const agent = await login('sarah@demo.com', 'agent123')
+const admin = await login('admin@americanbenefitsadvocates.org', 'Devil$8381')
 const RUN = Date.now().toString(36).slice(-4) // unique suffix per run — no cross-run collisions
+// self-contained: create a throwaway agent for the role tests, remove it at the end
+const agCreate = await fetch(`${BASE}/users`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', authorization: `Bearer ${admin}` },
+  body: JSON.stringify({ name: 'QA Agent', email: `qa-agent-${RUN}@example.com`, password: 'QaAgent123!', role: 'agent' }),
+}).then((r) => r.json())
+const agentId = agCreate?.user?.id || agCreate?.id
+const agent = await login(`qa-agent-${RUN}@example.com`, 'QaAgent123!')
 
 async function call(path, { method = 'GET', token = admin, body } = {}) {
   const r = await fetch(`${BASE}/${path}`, {
@@ -201,6 +208,12 @@ for (const l of (all.data?.rows || [])) {
   if (l.first_name === 'QA' || l.phone === '999' || (!l.first_name && !l.last_name)) { await call(`leads/${l.id}`, { method: 'DELETE' }); cleaned++ }
 }
 console.log(`  cleaned ${cleaned} QA lead(s)`)
+
+// deactivate the throwaway agent so the production user list stays clean
+if (agentId) {
+  const deact = await call(`users/${agentId}`, { method: 'PATCH', body: { is_active: false } })
+  console.log(`  QA agent deactivated: ${deact.status === 200}`)
+}
 
 console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${pass} passed, ${fail} failed`)
 if (failures.length) { console.log('\nFAILURES:'); failures.forEach((f) => console.log('  - ' + f)) }

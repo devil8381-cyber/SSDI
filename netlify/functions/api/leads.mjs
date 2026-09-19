@@ -118,7 +118,10 @@ route('POST', 'leads', async ({ req, body }) => {
       return fail('This lead already exists (' + who + ')', 409)
     }
   }
-  if (isAdmin(s.profile)) patch.assigned_to = body.assigned_to || (await pickAgentRoundRobin())
+  // Respect an explicit "Unassigned" choice ('' or null) — only fall back to
+  // round-robin when the admin didn't touch the assignee field at all.
+  if ('assigned_to' in body && (body.assigned_to === null || body.assigned_to === '')) patch.assigned_to = null
+  else if (isAdmin(s.profile)) patch.assigned_to = body.assigned_to || (await pickAgentRoundRobin())
   else patch.assigned_to = s.user.id
   const { data, error } = await service.from('leads').insert(patch).select('*').single()
   if (error) return fail(error.message)
