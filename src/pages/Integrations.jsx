@@ -118,21 +118,8 @@ export function MetaCard() {
   const load = () => api('/meta/settings').then((d) => { setS(d); setForm({ pixel_id: d.pixel_id, page_id: d.page_id, test_event_code: d.test_event_code, capi_token: '', page_token: '', app_secret: '' }) }).catch((e) => toast(e.message, 'error'))
   useEffect(() => { load() }, [])
 
-  if (!s) return <div className="card flex justify-center py-16"><Spinner className="h-7 w-7" /></div>
-
-  const save = async () => {
-    setBusy(true)
-    try {
-      const body = { pixel_id: form.pixel_id, page_id: form.page_id, test_event_code: form.test_event_code }
-      if (form.capi_token) body.capi_token = form.capi_token
-      if (form.page_token) body.page_token = form.page_token
-      if (form.app_secret) body.app_secret = form.app_secret
-      await api('/meta/settings', { method: 'PUT', body })
-      toast('Meta settings saved')
-      load()
-    } catch (e) { toast(describeError(e), 'error') } finally { setBusy(false) }
-  }
-  // CAPI test event + manual backfill — both single-flight with busy feedback
+  // CAPI test event + manual backfill — both single-flight with busy feedback.
+  // Hooks must run unconditionally, BEFORE any early return below.
   const { run: test, busy: testing } = useAction(async () => {
     const r = await api('/meta/test', { method: 'POST' })
     setTestResult(r)
@@ -152,6 +139,21 @@ export function MetaCard() {
       throw e
     }
   }, { toast })
+
+  if (!s) return <div className="card flex justify-center py-16"><Spinner className="h-7 w-7" /></div>
+
+  const save = async () => {
+    setBusy(true)
+    try {
+      const body = { pixel_id: form.pixel_id, page_id: form.page_id, test_event_code: form.test_event_code }
+      if (form.capi_token) body.capi_token = form.capi_token
+      if (form.page_token) body.page_token = form.page_token
+      if (form.app_secret) body.app_secret = form.app_secret
+      await api('/meta/settings', { method: 'PUT', body })
+      toast('Meta settings saved')
+      load()
+    } catch (e) { toast(describeError(e), 'error') } finally { setBusy(false) }
+  }
   const Dot = ({ ok, label }) => (
     <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${ok ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
       {ok ? <CheckCircle2 size={13} /> : <XCircle size={13} />} {label}

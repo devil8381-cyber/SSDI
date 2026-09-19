@@ -38,6 +38,7 @@ window.scrollTo = () => {}
 globalThis.window = window
 globalThis.document = window.document
 globalThis.localStorage = window.localStorage
+globalThis.sessionStorage = window.sessionStorage
 globalThis.history = window.history
 globalThis.location = window.location
 globalThis.HTMLElement = window.HTMLElement
@@ -82,7 +83,7 @@ const { ToastProvider } = await vite.ssrLoadModule('/src/ui.jsx')
 const { AuthProvider } = await vite.ssrLoadModule('/src/auth.jsx')
 const Int = await vite.ssrLoadModule('/src/pages/Integrations.jsx')
 
-async function probe(name, Comp, url) {
+async function probe(name, Comp, url, soak = 1500) {
   if (url) window.history.pushState({}, '', url)
   const el = document.getElementById('root')
   el.innerHTML = ''
@@ -93,14 +94,16 @@ async function probe(name, Comp, url) {
       React.createElement(ToastProvider, null,
         React.createElement(AuthProvider, null,
           React.createElement(Comp)))))
-    await new Promise((r) => setTimeout(r, 1500))
+    await new Promise((r) => setTimeout(r, soak))
+    root.unmount()
+    // give React's dev-mode error reporting a moment AFTER unmount too
+    await new Promise((r) => setTimeout(r, 700))
     const errs = errors.slice(before)
     const text = el.textContent.replace(/\s+/g, ' ').trim().slice(0, 220)
     console.log(`\n### ${name}: ${errs.length ? '💥 CRASH' : '✅ ok'}`)
     for (const e of errs) console.log('    ' + e.split('\n').slice(0, 6).join('\n    '))
     if (errs.length) console.log('    rendered text:', JSON.stringify(text))
-    root.unmount()
-    await new Promise((r) => setTimeout(r, 400))
+    await new Promise((r) => setTimeout(r, 300))
   } catch (e) {
     console.log(`\n### ${name}: 💥 SYNC CRASH\n    ` + e.stack.split('\n').slice(0, 6).join('\n    '))
   }
@@ -111,10 +114,37 @@ await probe('DriveCard', Int.DriveCard)
 await probe('SheetsCard', Int.SheetsCard)
 await probe('Integrations page (all cards)', Int.default)
 
-// 6. the real app, full tree, at the exact route
+// 6. the real app, full tree — sweep EVERY route with real auth + data
 const AppMod = await vite.ssrLoadModule('/src/App.jsx')
 const App = AppMod.default || AppMod.App
-await probe('FULL APP @ /admin/integrations', App, '/admin/integrations')
 
-console.log('\nDONE')
-process.exit(errors.length ? 2 : 0)
+const authz = { authorization: `Bearer ${login.access_token}` }
+const leadsRes = await realFetch('http://localhost:8888/api/leads', { headers: authz }).then((r) => r.json()).catch(() => ({}))
+const leadId = leadsRes?.leads?.[0]?.id || leadsRes?.[0]?.id || ''
+console.log(`\nlead for /leads/:id — ${leadId || 'none found'}`)
+
+const ROUTES = [
+  ['/', 2500],
+  ['/today', 2500],
+  ['/leads', 2500],
+  ['/leads/' + leadId, 3000],
+  ['/tasks', 2500],
+  ['/documents', 2500],
+  ['/scripts', 2500],
+  ['/templates', 2500],
+  ['/admin/users', 2500],
+  ['/admin/automation', 2500],
+  ['/admin/smtp', 2500],
+  ['/admin/integrations', 2500],
+  ['/upload/probe-token', 2500],
+  // 70s soak on the dashboard covers the 60s heartbeat + notification intervals
+  ['/', 70000],
+]
+let failed = 0
+for (const [route, soak] of ROUTES) {
+  const before = errors.length
+  await probe(`route ${route}`, App, route, soak)
+  if (errors.length > before) failed++
+}
+console.log(`\n${failed ? `💥 ${failed} route(s) crashed` : '✅ ALL ROUTES CLEAN'} · DONE`)
+process.exit(failed ? 2 : 0)

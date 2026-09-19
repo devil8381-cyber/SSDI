@@ -6,6 +6,27 @@ import { ToastProvider } from './ui'
 import ErrorBoundary from './ErrorBoundary'
 import './styles.css'
 
+// Crash reporter: every uncaught error/rejection in the browser is posted to
+// the server with its exact stack, so crashes arrive in the server log with
+// file+line — the error screen the user sees is never the only evidence.
+function reportCrash(kind, err) {
+  try {
+    fetch('/api/client-log', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      keepalive: true,
+      body: JSON.stringify({
+        kind,
+        message: String(err?.message || err),
+        stack: String(err?.stack || ''),
+        href: window.location.href,
+      }),
+    }).catch(() => {})
+  } catch {}
+}
+window.addEventListener('error', (e) => reportCrash('error', e.error || { message: e.message }))
+window.addEventListener('unhandledrejection', (e) => reportCrash('rejection', e.reason))
+
 // Dev-server watchdog: when the dev server dies mid-session, HMR stops
 // updating the page silently and the tab keeps running outdated code —
 // which surfaces later as confusing crashes. Make that state visible.

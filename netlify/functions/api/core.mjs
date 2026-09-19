@@ -7,6 +7,18 @@ import {
 
 const isAdmin = (p) => p?.role === 'admin'
 
+// ── client crash reporter (public, fire-and-forget) ──
+// The browser posts every uncaught error/rejection here with its stack, so a
+// user-visible crash arrives in the server log with an exact file+line — no
+// back-and-forth needed to diagnose it. Deliberately unauthenticated: crashes
+// can happen before login. Payload is size-capped; it only logs.
+route('POST', 'client-log', async ({ body }) => {
+  const stack = String(body?.stack || '').slice(0, 4000)
+  const message = String(body?.message || '').slice(0, 500)
+  console.error(`[client ${body?.kind || 'error'}] ${message}\n${stack}\n  at ${String(body?.href || '').slice(0, 200)}`)
+  return json({ ok: true })
+})
+
 // ── first-run setup (allowed only until the first admin exists) ──
 route('GET', 'setup/status', async () => {
   if (!dbConfigured()) return json({ needed: true, dbConfigured: false })

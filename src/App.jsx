@@ -51,6 +51,11 @@ function RouteError() {
           <button className="btn-primary" onClick={() => window.location.reload()}>Reload</button>
           <a className="btn-ghost" href="/">Go to dashboard</a>
         </div>
+        {error?.stack && (
+          <pre className="mt-4 max-h-40 overflow-auto rounded-lg bg-slate-900 p-3 text-left text-[11px] leading-relaxed text-slate-200">
+            {String(error.stack).slice(0, 1200)}
+          </pre>
+        )}
       </div>
     </Layout>
   )
