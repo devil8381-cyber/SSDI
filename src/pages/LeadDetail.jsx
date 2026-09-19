@@ -97,9 +97,10 @@ export default function LeadDetail() {
 
   // ── request docs → auto-compose the doc-request email with the link ──
   const openEmailWithDocLink = useCallback((link) => {
-    setShowDocReq(false)
+    const lead = data?.lead
+    if (!lead) return
     const vars = {
-      first_name: lead?.first_name || '', last_name: lead?.last_name || '', email: lead?.email || '',
+      first_name: lead.first_name || '', last_name: lead?.last_name || '', email: lead?.email || '',
       phone: lead?.phone || '', state: lead?.state || '', city: lead?.city || '',
       age: ageFrom(lead?.dob) ?? '', agent_name: profile?.name || '', doc_link: link,
     }
@@ -113,7 +114,7 @@ export default function LeadDetail() {
       setEmailPrefill({ subject: 'Documents needed for your claim', body: `<p>Hi ${vars.first_name}, please upload your documents here: ${link}</p>`, docLink: link })
       setShowEmail(true)
     })
-  }, [lead, profile])
+  }, [data, profile])
 
   // While any recording is uploading/processing, poll until it lands in Drive
   const pendingRecording = data?.recordings?.some((r) => r.status === 'uploading' || r.status === 'processing')
