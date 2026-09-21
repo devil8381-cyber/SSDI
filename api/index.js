@@ -17,9 +17,11 @@ const context = {
 function nodeReqToWeb(req) {
   const proto = req.headers['x-forwarded-proto'] || 'https'
   // Vercel's legacy route rewrite replaces req.url with the DESTINATION — the
-  // original client path arrives in the x-original-path header instead.
+  // original client path arrives in the x-original-path header, and the query
+  // string rides on req.url. Reassemble both.
   const original = req.headers['x-original-path'] || req.url
-  const url = `${proto}://${req.headers.host || 'localhost'}${original}`
+  const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''
+  const url = `${proto}://${req.headers.host || 'localhost'}${original}${qs}`
   const headers = new Headers()
   for (const [k, v] of Object.entries(req.headers || {})) {
     if (Array.isArray(v)) v.forEach((x) => headers.append(k, x))

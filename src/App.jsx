@@ -33,6 +33,16 @@ function Boot() {
 // other error shows the box so it's visible and reported, never masked.
 function RouteError() {
   const error = useRouteError()
+  // every caught route error is reported with its stack so the exact cause
+  // lands in the server-side error log — no blind debugging
+  useEffect(() => {
+    try {
+      fetch('/api/client-log', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, keepalive: true,
+        body: JSON.stringify({ kind: 'route-error', message: String(error?.message || ''), stack: String(error?.stack || ''), href: window.location.href }),
+      }).catch(() => {})
+    } catch {}
+  }, [error])
   const msg = String(error?.message || '')
   const isStaleChunk = /dynamically imported module|Loading chunk|Importing a module script failed/i.test(msg)
   const stamp = 'aba_autoreload:' + window.location.pathname

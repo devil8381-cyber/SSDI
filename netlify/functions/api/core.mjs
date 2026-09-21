@@ -16,6 +16,13 @@ route('POST', 'client-log', async ({ body }) => {
   const stack = String(body?.stack || '').slice(0, 4000)
   const message = String(body?.message || '').slice(0, 500)
   console.error(`[client ${body?.kind || 'error'}] ${message}\n${stack}\n  at ${String(body?.href || '').slice(0, 200)}`)
+  // persist the last 30 client errors in the DB so they can be read directly
+  try {
+    const { data: cur } = await service.from('settings').select('value').eq('key', 'client_errors').maybeSingle()
+    const list = (cur?.value?.errors || []).slice(0, 29)
+    list.unshift({ at: new Date().toISOString(), href: String(body?.href || '').slice(0, 200), message, stack: stack.slice(0, 1200) })
+    await service.from('settings').upsert({ key: 'client_errors', value: { errors: list }, updated_at: new Date().toISOString() })
+  } catch {}
   return json({ ok: true })
 })
 
