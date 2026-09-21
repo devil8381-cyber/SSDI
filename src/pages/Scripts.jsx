@@ -131,7 +131,7 @@ export function RebuttalsManager() {
     await api('/settings/rebuttals', { method: 'PUT', body: { rebuttals: items } })
   }, { toast, successMsg: 'Rebuttals saved — live in the sticky panel instantly' })
 
-  useEffect(() => { api('/settings/rebuttals').then((d) => setItems(d.rebuttals || [])).catch((e) => toast(describeError(e), 'error')) }, [])
+  useEffect(() => { api('/settings/rebuttals').then((d) => setItems(Array.isArray(d.rebuttals) ? d.rebuttals : [])).catch((e) => toast(describeError(e), 'error')) }, [])
 
   return (
     <div className="card p-5 mt-8">

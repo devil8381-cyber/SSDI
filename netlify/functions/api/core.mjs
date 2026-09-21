@@ -101,7 +101,10 @@ route('PUT', 'settings/auto-assign', async ({ req, body }) => {
 route('GET', 'settings/rebuttals', async ({ req }) => {
   const s = await getSession(req)
   if (!s) return unauthorized()
-  return json({ rebuttals: (await getSetting('rebuttals')) || [] })
+  // accept both stored shapes (bare array or {rebuttals:[...]}) — always return the array
+  const cfg = await getSetting('rebuttals')
+  const list = Array.isArray(cfg) ? cfg : Array.isArray(cfg?.rebuttals) ? cfg.rebuttals : []
+  return json({ rebuttals: list })
 })
 
 route('PUT', 'settings/rebuttals', async ({ req, body }) => {

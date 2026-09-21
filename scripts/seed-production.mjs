@@ -199,7 +199,7 @@ const rebuttals = [
   { title: '"I already have an attorney or representative."', body: `"That's great that you already have someone helping you — I don't want to get in the way of that. If you'd ever like a second opinion, we're happy to help, but it's completely your call. Would you like me to close out your file with us, or keep the option open?"\n\nCOMPLIANCE: Always respond honestly. Never instruct a claimant to conceal or deny existing representation — this creates real legal and ethical exposure.` },
   { title: '"Can you guarantee I\'ll be approved?"', body: `"I wish I could promise that, but honestly no one can — SSA makes that call, not us. What I can tell you is we'll do everything we can to make sure your file is as complete and strong as possible going into your hearing."` },
 ]
-const { error: rebErr } = await sb.from('settings').upsert({ key: 'rebuttals', value: { rebuttals }, updated_at: new Date().toISOString() })
+const { error: rebErr } = await sb.from('settings').upsert({ key: 'rebuttals', value: rebuttals, updated_at: new Date().toISOString() })
 console.log(`  ${rebuttals.length} rebuttals: ${rebErr ? 'ERR ' + rebErr.message : 'saved'}`)
 
 console.log('━ 7. Verify ─')
