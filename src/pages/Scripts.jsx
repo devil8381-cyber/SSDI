@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Save, Trash2, ScrollText, Loader2 } from 'lucide-react'
+import { Plus, Save, Trash2, ScrollText, Loader2, Pencil } from 'lucide-react'
 import { api, describeError } from '../api'
 import { useAuth } from '../auth'
 import { useAction } from '../lib/hooks'
@@ -75,7 +75,7 @@ export default function Scripts() {
                 </div>
                 {admin && (
                   <div className="flex gap-1">
-                    <button className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-brand-400" onClick={() => setEditing(s)} title="Edit"><Save size={15} /></button>
+                    <button className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-2 py-1 text-[11px] font-semibold text-slate-300 hover:bg-slate-800 hover:text-brand-400" onClick={() => setEditing(s)} title="Edit this script"><Pencil size={12} /> Edit</button>
                     <button className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-rose-500" onClick={() => setConfirmDel(s.id)} title="Delete"><Trash2 size={15} /></button>
                   </div>
                 )}

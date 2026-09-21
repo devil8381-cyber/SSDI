@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users2, ClipboardList, FileText, MessageSquareText, ScrollText,
-  UserCog, Plug, Send, Bell, LogOut, Menu, X, Headphones, WifiOff, Search, Zap, Phone, Sunrise,
+  UserCog, Plug, Send, Bell, LogOut, Menu, X, Headphones, WifiOff, Search, Zap, Phone, Sunrise, Pencil,
 } from 'lucide-react'
 import { api } from '../api'
 import { useAuth } from '../auth'
-import { useOnline, useDebounced } from '../lib/hooks'
+import { useOnline, useDebounced, useAction } from '../lib/hooks'
 import { dualCallback } from '../lib/tz'
 import { setCallConfig } from '../lib/call'
 import { fmtPhone } from '../lib/validate'
@@ -285,11 +285,16 @@ const SCRIPT_TABS = [
 ]
 
 function FloatingScripts() {
+  const { profile } = useAuth()
+  const toast = useToast()
+  const admin = profile?.role === 'admin'
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState('frontend')
   const [scripts, setScripts] = useState([])
   const [rebuttals, setRebuttals] = useState([])
   const [search, setSearch] = useState('')
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
 
   // openable from the left sidebar ("Scripts Panel") as well as the floating button
   useEffect(() => {
@@ -301,11 +306,23 @@ function FloatingScripts() {
   useEffect(() => {
     if (!open) return
     api('/scripts').then((d) => setScripts(d.scripts || [])).catch(() => {})
-    api('/settings/rebuttals').then((d) => setRebuttals(d.rebuttals || [])).catch(() => {})
+    api('/settings/rebuttals').then((d) => setRebuttals(Array.isArray(d.rebuttals) ? d.rebuttals : [])).catch(() => {})
   }, [open])
 
   const current = scripts.find((s) => s.type === tab)
   const filtered = rebuttals.filter((r) => (r.title + ' ' + r.body).toLowerCase().includes(search.toLowerCase()))
+
+  // admins edit the current tab's script right from the panel
+  const startEdit = () => { setDraft(current ? current.content : ''); setEditing(true) }
+  const { run: saveEdit, busy: savingEdit } = useAction(async () => {
+    const content = String(draft || '')
+    if (!content.trim()) throw new Error('The script is empty.')
+    if (current) await api(`/scripts/${current.id}`, { method: 'PATCH', body: { title: current.title, type: current.type, content } })
+    else await api('/scripts', { method: 'POST', body: { title: (SCRIPT_TABS.find((x) => x[0] === tab) || [])[1] || 'Script', type: tab, content } })
+    setEditing(false)
+    const d = await api('/scripts')
+    setScripts(d.scripts || [])
+  }, { toast, successMsg: 'Script updated from the panel' })
 
   return (
     <>
@@ -340,9 +357,23 @@ function FloatingScripts() {
               </div>
             </div>
           ) : (
-            <pre className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap bg-slate-900 p-4 text-[12.5px] leading-relaxed text-slate-100">
-              {current ? current.content : 'No script of this type yet — add one under Scripts.'}
-            </pre>
+            <div className="flex min-h-0 flex-1 flex-col">
+              {admin && (
+                <div className="flex justify-end gap-2 border-b border-slate-800 p-2">
+                  {!editing
+                    ? <button className="btn-ghost !px-2.5 !py-1 text-xs" onClick={startEdit}><Pencil size={12} /> Edit script</button>
+                    : <>
+                        <button className="btn-primary !px-2.5 !py-1 text-xs" onClick={saveEdit} disabled={savingEdit}>{savingEdit ? 'Saving…' : 'Save'}</button>
+                        <button className="btn-ghost !px-2.5 !py-1 text-xs" onClick={() => setEditing(false)}>Cancel</button>
+                      </>}
+                </div>
+              )}
+              {editing
+                ? <textarea className="input m-3 flex-1 resize-none font-mono text-[12.5px] leading-relaxed" value={draft} onChange={(e) => setDraft(e.target.value)} />
+                : <pre className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap bg-slate-900 p-4 text-[12.5px] leading-relaxed text-slate-100">
+                    {current ? current.content : 'No script of this type yet — ' + (admin ? 'click Edit script to write one.' : 'add one under Scripts.')}
+                  </pre>}
+            </div>
           )}
         </div>
       )}

@@ -965,6 +965,35 @@ function IntakeCard({ lead, onSaved }) {
     setDirty(false)
   }, { toast, successMsg: 'Intake saved to the lead file', onSaved })
 
+  // Email the completed intake to the claimant — their own record of the
+  // information they gave (information only, no recordings).
+  const esc = (v) => String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const { run: sendInfo, busy: sendingInfo } = useAction(async () => {
+    const rows = INTAKE_SECTIONS.flatMap((s) => s.questions.map((q) => ({ section: s.name, q: q.q, a: String(data[q.id] || '').trim() })))
+      .filter((x) => x.a && !/^(Yes,|No,)\s*$/.test(x.a))
+    if (!rows.length) throw new Error('The intake is empty — fill in the answers first, save, then send.')
+    const bySection = {}
+    for (const r of rows) (bySection[r.section] = bySection[r.section] || []).push(r)
+    let html = `<p style="margin:0 0 14px;font-size:15px;color:#334155">Hi ${esc(lead.first_name)},</p>
+<p style="margin:0 0 14px;font-size:15px;color:#334155">Thank you for speaking with <b style="color:#4f46e5">${esc(profile?.name)}</b> from American Benefits Advocates. Below is a copy of the information you provided during our call — <b>please keep this email for your records</b> and let us know if anything needs correcting.</p>`
+    for (const [section, qs] of Object.entries(bySection)) {
+      html += `<p style="margin:18px 0 6px;font-size:13px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#4f46e5">${esc(section)}</p>`
+      html += `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">`
+      for (const r of qs) {
+        html += `<tr>
+          <td style="padding:8px 12px;border:1px solid #e2e8f0;background-color:#f8fafc;width:55%;font-size:13px;color:#475569">${esc(r.q)}</td>
+          <td style="padding:8px 12px;border:1px solid #e2e8f0;font-size:13px;font-weight:600;color:#1e293b">${esc(r.a)}</td>
+        </tr>`
+      }
+      html += `</table>`
+    }
+    html += `<p style="margin:16px 0 0;font-size:12px;color:#94a3b8">American Benefits Advocates | 1250 H Street NW, Suite 605, Washington, DC 20005<br/>This summary reflects the information you provided on your call. American Benefits Advocates is not the Social Security Administration.</p>`
+    await api(`/leads/${lead.id}/email`, {
+      method: 'POST',
+      body: { subject: `Your SSDI Intake Information — Keep for Your Records`, body: html, purpose: 'general' },
+    })
+  }, { toast, successMsg: 'Intake information emailed to the claimant' })
+
   const answered = Object.values(data).filter((v) => String(v || '').trim()).length
   const totalQ = INTAKE_SECTIONS.reduce((n, s) => n + s.questions.length, 0)
 
@@ -974,6 +1003,9 @@ function IntakeCard({ lead, onSaved }) {
         <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-200"><NotebookPen size={15} className="text-brand-400" /> SSDI Intake — fill while on the call</h2>
         <div className="flex items-center gap-2">
           <span className="text-xs text-slate-400">{answered}/{totalQ} answered</span>
+          <button className="btn-ghost !py-1.5 text-xs" onClick={sendInfo} disabled={sendingInfo || answered === 0 || dirty} title={dirty ? 'Save the intake first' : lead.email ? 'Email a copy of this information to the claimant' : 'This lead has no email address'}>
+            {sendingInfo ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />} {sendingInfo ? 'Sending…' : 'Send info to claimant'}
+          </button>
           <button className="btn-primary !py-1.5 text-xs" onClick={save} disabled={busy || !dirty}>
             {busy ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} {busy ? 'Saving…' : 'Save intake'}
           </button>
