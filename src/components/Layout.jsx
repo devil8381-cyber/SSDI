@@ -9,6 +9,7 @@ import { useAuth } from '../auth'
 import { useOnline, useDebounced } from '../lib/hooks'
 import { dualCallback } from '../lib/tz'
 import { setCallConfig } from '../lib/call'
+import { fmtPhone } from '../lib/validate'
 import { fmtDateTime, leadName, DispositionBadge, useToast } from '../ui'
 
 const NAV = [
@@ -177,6 +178,14 @@ export default function Layout({ children }) {
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
           {NAV.map((item) => <NavItem key={item.to} item={item} />)}
+          {/* quick scripts/rebuttals panel — same sticky panel as the floating button */}
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('aba:open-scripts'))}
+            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white"
+          >
+            <Headphones size={17} />
+            Scripts Panel
+          </button>
           {profile?.role === 'admin' && (
             <>
               <p className="px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-widest text-slate-400">Administration</p>
@@ -224,7 +233,7 @@ export default function Layout({ children }) {
                   <button key={r.id} onClick={() => goToLead(r.id)} className="flex w-full items-center justify-between gap-2 border-b border-slate-50 px-3 py-2.5 text-left hover:bg-brand-500/10/60">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-slate-200">{leadName(r)}</p>
-                      <p className="text-[11px] text-slate-400">{r.phone || r.email || '—'}</p>
+                      <p className="text-[11px] text-slate-400">{fmtPhone(r.phone) || r.email || '—'}</p>
                     </div>
                     <DispositionBadge value={r.disposition} />
                   </button>
@@ -281,6 +290,13 @@ function FloatingScripts() {
   const [scripts, setScripts] = useState([])
   const [rebuttals, setRebuttals] = useState([])
   const [search, setSearch] = useState('')
+
+  // openable from the left sidebar ("Scripts Panel") as well as the floating button
+  useEffect(() => {
+    const onOpen = () => setOpen(true)
+    window.addEventListener('aba:open-scripts', onOpen)
+    return () => window.removeEventListener('aba:open-scripts', onOpen)
+  }, [])
 
   useEffect(() => {
     if (!open) return

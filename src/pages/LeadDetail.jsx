@@ -7,7 +7,7 @@ import {
 import { api, describeError } from '../api'
 import { useAuth } from '../auth'
 import { useAction, useDirtyGuard } from '../lib/hooks'
-import { validateForm, emailRule, phoneRule, maxLen, sanitizeText } from '../lib/validate'
+import { validateForm, emailRule, phoneRule, maxLen, sanitizeText, fmtPhone } from '../lib/validate'
 import { renderTemplate } from '../lib/render'
 import { getCallHref } from '../lib/call'
 import { dualCallback, zonedToUtc, timeInTz, dateInTz, IST, SCHED_ZONES } from '../lib/tz'
@@ -196,7 +196,7 @@ export default function LeadDetail() {
     const vars = {
       first_name: lead.first_name || '', last_name: lead.last_name || '', email: lead.email || '',
       phone: lead.phone || '', age: ageFrom(lead.dob) ?? '',
-      agent_name: profile?.name || '', agent_phone: profile?.phone || '',
+      agent_name: profile?.name || '', agent_phone: fmtPhone(profile?.phone),
       doc_link: '', cb_date: custDate, cb_time: custTime,
     }
     api('/templates?type=email').then((d) => {
@@ -295,7 +295,7 @@ export default function LeadDetail() {
             {lead.disposition_reason ? <span className="text-xs text-slate-400">Reason: {lead.disposition_reason}</span> : null}
           </div>
           <p className="mt-0.5 text-sm text-slate-400">
-            {lead.phone || 'no phone'} · {lead.email || 'no email'} · {ageFrom(lead.dob) ?? '?'} yrs · {lead.city || lead.state || '—'} · <span className="capitalize">{lead.source}</span>{lead.form_name ? ` · ${lead.form_name}` : ''}
+            {fmtPhone(lead.phone) || 'no phone'} · {lead.email || 'no email'} · {ageFrom(lead.dob) ?? '?'} yrs · {lead.city || lead.state || '—'} · <span className="capitalize">{lead.source}</span>{lead.form_name ? ` · ${lead.form_name}` : ''}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -733,6 +733,7 @@ function EmailHistory({ emails }) {
 
 // ── modals ────────────────────────────────────────────────────
 function EmailModal({ open, onClose, lead, onSent, prefill }) {
+  const { profile } = useAuth()
   const toast = useToast()
   const [templates, setTemplates] = useState([])
   const [purpose, setPurpose] = useState('followups')
@@ -756,7 +757,19 @@ function EmailModal({ open, onClose, lead, onSent, prefill }) {
   const applyTemplate = (tid) => {
     setTemplateId(tid)
     const t = templates.find((x) => x.id === tid)
-    if (t) { setSubject(t.subject || ''); setBody(t.body || '') }
+    if (!t) return
+    // Render variables so the claimant sees THEIR name + the agent's name and
+    // number — never raw {{placeholders}}.
+    const vars = {
+      first_name: lead.first_name || '', last_name: lead.last_name || '',
+      email: lead.email || '', phone: fmtPhone(lead.phone) || '', state: lead.state || '',
+      city: lead.city || '', age: ageFrom(lead.dob) ?? '',
+      agent_name: profile?.name || '', agent_phone: fmtPhone(profile?.phone) || profile?.phone || '',
+      agent_email: profile?.email || '',
+      doc_link: '',
+    }
+    setSubject(renderTemplate(t.subject || '', vars))
+    setBody(renderTemplate(t.body || '', vars))
   }
   const send = async () => {
     if (busy) return

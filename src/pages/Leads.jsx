@@ -6,7 +6,7 @@ import { api, describeError } from '../api'
 import { useAuth } from '../auth'
 import { getCallHref } from '../lib/call'
 import { useDebounced, useLatestRequest, useAction } from '../lib/hooks'
-import { validateForm, required, emailRule, phoneRule, maxLen, sanitizeText } from '../lib/validate'
+import { validateForm, required, emailRule, phoneRule, maxLen, sanitizeText, fmtPhone } from '../lib/validate'
 import { useToast, Modal, DispositionBadge, Empty, Spinner, PageError, ageFrom, leadName, fmtDate } from '../ui'
 import { DISPOSITIONS, CRITERIA_REASONS, STATES } from '../config'
 
@@ -272,7 +272,7 @@ export default function Leads() {
                       </td>
                       <td className="td text-slate-300" onClick={(e) => e.stopPropagation()}>
                         {r.phone
-                          ? <a href={getCallHref(r.phone) || '#'} className="hover:text-brand-400 hover:underline" title="Click to call">{r.phone}</a>
+                          ? <a href={getCallHref(r.phone) || '#'} className="hover:text-brand-400 hover:underline" title="Click to call">{fmtPhone(r.phone)}</a>
                           : '—'}
                       </td>
                       <td className="td text-slate-300">{age ?? '—'}</td>

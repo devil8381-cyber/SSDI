@@ -139,6 +139,14 @@ export async function sendLeadEmail({ lead, agent, subject, html, purpose, baseU
 
 // ── timezone helpers (server twin of src/lib/tz.js — Intl-based, DST-aware) ──
 export const IST_TZ = 'Asia/Kolkata'
+// US phone display format — "8381083616" → "(838) 108-3616". Non-US numbers
+// pass through untouched. Server twin of src/lib/validate.js fmtPhone.
+export function fmtPhone(p) {
+  const d = String(p || '').replace(/\D/g, '')
+  if (d.length === 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
+  if (d.length === 11 && d.startsWith('1')) return `(${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7)}`
+  return String(p || '')
+}
 export function tzAbbrAt(date, tz) {
   if (tz === 'Asia/Kolkata') return 'IST'
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'short' }).formatToParts(date)
@@ -162,11 +170,12 @@ export function leadVars(lead, agent) {
     first_name: lead.first_name || '',
     last_name: lead.last_name || '',
     email: lead.email || '',
-    phone: lead.phone || '',
+    phone: fmtPhone(lead.phone),
     state: lead.state || '',
     city: lead.city || '',
     age,
     agent_name: agent?.name || '',
+    agent_phone: fmtPhone(agent?.phone),
     doc_link: '',
   }
 }
@@ -449,7 +458,7 @@ export async function maybeSendWelcomeEmail(lead, agentId) {
     if ((prior || []).some((p) => p.detail?.agent_id === agentId)) return // already welcomed by this agent
     const { data: tpl } = await service.from('templates')
       .select('subject,body').eq('name', 'Agent Assigned — Welcome (ABA)').maybeSingle()
-    const vars = { ...leadVars(lead, { name: agent.name }), agent_name: agent.name || '', agent_phone: agent.phone || '', agent_email: agent.email || '' }
+    const vars = { ...leadVars(lead, { name: agent.name }), agent_name: agent.name || '', agent_phone: fmtPhone(agent.phone) || '', agent_email: agent.email || '' }
     const subject = tpl?.subject ? render(tpl.subject, vars) : 'Your specialist has been assigned — American Benefits Advocates'
     const body = tpl?.body ? render(tpl.body, vars)
       : `<p>Hi <strong>${vars.first_name}</strong>,</p><p>Great news — your SSDI file is moving forward. Your assigned specialist is <strong>${vars.agent_name}</strong>${vars.agent_phone ? ` and they'll be calling you from <strong>${vars.agent_phone}</strong>` : ''}.</p><p>Please keep your phone nearby — and reply to this email if you have any questions in the meantime.</p><p>American Benefits Advocates</p>`
@@ -581,7 +590,7 @@ export async function importLeadRows(rows, { source = 'import', campaign = null,
     if (emailKey) index.set(emailKey, 'new')
     toInsert.push({
       first_name: clean(r.first_name, 100) || '', last_name: clean(r.last_name, 100) || '',
-      email: emailL || null, phone: clean(r.phone, 30) || null,
+      email: emailL || null, phone: fmtPhone(clean(r.phone, 30)) || null,
       dob: clean(r.dob, 20) || null, state: clean(r.state, 10), city: clean(r.city, 120),
       address: clean(r.address, 300), zip: clean(r.zip, 20),
       worked_5_of_10: r.worked_5_of_10 != null && r.worked_5_of_10 !== '' ? truthyVal(r.worked_5_of_10) : null,

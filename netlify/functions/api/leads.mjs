@@ -2,7 +2,7 @@ import { route } from './_router.mjs'
 import {
   service, json, fail, getSession, unauthorized, logActivity, notify, adminIds,
   sendCapi, metaSecrets, getSetting, DISPOSITIONS, LEAD_SOURCES, pickAgentRoundRobin,
-  applyFollowupRules, buildQueueFor, sendSystemEmail, baseUrl, maybeSendWelcomeEmail, importLeadRows,
+  applyFollowupRules, buildQueueFor, sendSystemEmail, baseUrl, maybeSendWelcomeEmail, importLeadRows, fmtPhone,
 } from './_lib.mjs'
 
 const isAdmin = (p) => p?.role === 'admin'
@@ -27,6 +27,8 @@ const cleanLeadPatch = (patch) => {
     if (f in patch) patch[f] = cleanStr(patch[f], f === 'notes' || f === 'disability' ? 2000 : 200)
   }
   if ('email' in patch && patch.email) patch.email = patch.email.toLowerCase()
+  // US phone format always: "8381083616" → "(838) 108-3616" — never random formats
+  if ('phone' in patch && patch.phone) patch.phone = fmtPhone(patch.phone)
   return patch
 }
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
