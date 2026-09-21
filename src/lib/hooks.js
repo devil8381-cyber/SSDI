@@ -12,6 +12,25 @@ export function useDebounced(value, delay = 350) {
   return debounced
 }
 
+// ── Form draft protection ────────────────────────────────────────────────
+// Chrome can discard a background tab and reload it when you return — any
+// unsaved form would be lost. These keep a per-tab draft in sessionStorage
+// (which survives both reloads and tab discards) so the form restores
+// exactly as the user left it.
+export function saveDraft(key, value) {
+  try { sessionStorage.setItem('aba_draft:' + key, JSON.stringify({ value, at: Date.now() })) } catch {}
+}
+export function loadDraft(key, maxAgeMs = 86400000) {
+  try {
+    const d = JSON.parse(sessionStorage.getItem('aba_draft:' + key) || 'null')
+    if (d && Date.now() - d.at < maxAgeMs) return d.value
+  } catch {}
+  return null
+}
+export function clearDraft(key) {
+  try { sessionStorage.removeItem('aba_draft:' + key) } catch {}
+}
+
 // ── Central async-action wrapper ──────────────────────────────────────────
 // Gives every button the same defenses:
 //   • double-click / re-entrancy protection (busyRef gate)

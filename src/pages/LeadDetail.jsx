@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { api, describeError } from '../api'
 import { useAuth } from '../auth'
-import { useAction, useDirtyGuard } from '../lib/hooks'
+import { useAction, useDirtyGuard, saveDraft, loadDraft, clearDraft } from '../lib/hooks'
 import { validateForm, emailRule, phoneRule, maxLen, sanitizeText, fmtPhone } from '../lib/validate'
 import { renderTemplate } from '../lib/render'
 import { getCallHref } from '../lib/call'
@@ -946,8 +946,10 @@ function QuickTask({ onAdd, busy }) {
 // ── SSDI intake questionnaire (33 questions, filled on the call) ──
 function IntakeCard({ lead, onSaved }) {
   const toast = useToast()
-  const [data, setData] = useState(lead.intake || {})
+  // draft survives tab reloads/discards — the 33-question intake is never lost
+  const [data, setData] = useState(() => loadDraft('intake_' + lead.id) || lead.intake || {})
   const [dirty, setDirty] = useState(false)
+  useEffect(() => { if (Object.keys(data).length) saveDraft('intake_' + lead.id, data) }, [data, lead.id])
 
   const initial = lead.intake || {}
   const setAnswer = (qid, value) => {
@@ -962,6 +964,7 @@ function IntakeCard({ lead, onSaved }) {
     // trim every answer before persisting
     const clean = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, sanitizeText(v, 2000)]))
     await api(`/leads/${lead.id}`, { method: 'PATCH', body: { intake: clean } })
+    clearDraft('intake_' + lead.id)
     setDirty(false)
   }, { toast, successMsg: 'Intake saved to the lead file', onSaved })
 

@@ -5,7 +5,7 @@ import { Search, Plus, Upload, Download, UserPlus, ChevronLeft, ChevronRight, Us
 import { api, describeError } from '../api'
 import { useAuth } from '../auth'
 import { getCallHref } from '../lib/call'
-import { useDebounced, useLatestRequest, useAction } from '../lib/hooks'
+import { useDebounced, useLatestRequest, useAction, saveDraft, loadDraft, clearDraft } from '../lib/hooks'
 import { validateForm, required, emailRule, phoneRule, maxLen, sanitizeText, fmtPhone } from '../lib/validate'
 import { useToast, Modal, DispositionBadge, Empty, Spinner, PageError, ageFrom, leadName, fmtDate } from '../ui'
 import { DISPOSITIONS, CRITERIA_REASONS, STATES } from '../config'
@@ -57,7 +57,7 @@ export default function Leads() {
   const [createdAfter, setCreatedAfter] = useState('')
 
   const [showImport, setShowImport] = useState(false)
-  const [showAdd, setShowAdd] = useState(false)
+  const [showAdd, setShowAdd] = useState(() => !!loadDraft('aba_addlead_open'))
   const [assignTo, setAssignTo] = useState('')
 
   const req = useLatestRequest()
@@ -431,9 +431,15 @@ function ImportModal({ open, onClose, agents, onDone }) {
 function AddModal({ open, onClose, agents, onDone }) {
   const toast = useToast()
   const { profile } = useAuth()
-  const [f, setF] = useState({})
+  // restore the draft after a tab reload/discard so nothing the user typed is lost
+  const [f, setF] = useState(() => loadDraft('aba_addlead_form') || {})
   const [errors, setErrors] = useState({})
   const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    if (!open) { clearDraft('aba_addlead_open'); return }
+    if (Object.keys(f).length) saveDraft('aba_addlead_form', f)
+    saveDraft('aba_addlead_open', { open: true })
+  }, [f, open])
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }))
 
   const save = async () => {
@@ -461,6 +467,8 @@ function AddModal({ open, onClose, agents, onDone }) {
         },
       })
       toast('Lead created')
+      clearDraft('aba_addlead_form')
+      clearDraft('aba_addlead_open')
       setF({})
       setErrors({})
       onDone()

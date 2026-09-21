@@ -104,6 +104,23 @@ const ok = (name, cond) => { if (cond) { pass++; console.log(`  ✅ ${name}`) } 
 console.log('━ PART 3: Add Lead via real UI ─')
 await mountApp()
 
+// draft protection: type, simulate a tab reload (full remount), verify restore
+{
+  clickByText('Add lead')
+  await sleep(400)
+  typeIntoLabel('First name', 'DraftCheck')
+  typeIntoLabel('Phone', '5550001234')
+  await unmount()
+  await mountApp() // same tab → sessionStorage draft survives
+  clickByText('Add lead')
+  await sleep(400)
+  const restored = [...window.document.querySelectorAll('input')].some((i) => i.value === 'DraftCheck')
+  ok('typed draft survives a tab reload (modal reopens with values)', restored)
+  // close it and clear the draft so the flow continues clean
+  clickByText('Cancel')
+  await sleep(300)
+}
+
 const RUN = String(Date.now()).slice(-4)
 const created = []
 const attempts = [
