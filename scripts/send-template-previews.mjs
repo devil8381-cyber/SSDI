@@ -48,7 +48,7 @@ console.log(`sending ${emailTemplates.length} email template(s) from ssdi@…\n`
 for (const t of emailTemplates) {
   const res = await call(`leads/${leadId}/email`, {
     method: 'POST',
-    body: { subject: render(t.subject), body: render(t.body), purpose: 'followups' }, // followups → ssdi@ per your rule
+    body: { subject: render(t.subject), body: render(t.body), purpose: 'general' }, // followups → ssdi@ per your rule
   })
   console.log(`${res.status === 200 ? '✅' : '❌'} ${t.name} → ${res.status === 200 ? 'sent via ' + res.data.smtp : 'FAILED: ' + JSON.stringify(res.data).slice(0, 120)}`)
 }

@@ -182,8 +182,35 @@ export default function LeadDetail() {
     navigate('/leads')
   }, { toast, successMsg: 'Lead deleted' })
 
+  // When a callback is scheduled, offer the confirmation email immediately.
+  const [pendingCb, setPendingCb] = useState(null)
+  useEffect(() => {
+    if (!pendingCb) return
+    const cb = pendingCb
+    setPendingCb(null)
+    const lead = data?.lead
+    if (!lead) return
+    const when = new Date(cb.due_at)
+    const custDate = dayInTz(when, cb.customer_tz)
+    const custTime = timeInTz(when, cb.customer_tz)
+    const vars = {
+      first_name: lead.first_name || '', last_name: lead.last_name || '', email: lead.email || '',
+      phone: lead.phone || '', age: ageFrom(lead.dob) ?? '',
+      agent_name: profile?.name || '', agent_phone: profile?.phone || '',
+      doc_link: '', cb_date: custDate, cb_time: custTime,
+    }
+    api('/templates?type=email').then((d) => {
+      const tpl = (d.templates || []).find((t) => t.name === 'Callback Scheduled') || (d.templates || [])[0]
+      const subject = renderTemplate(tpl?.subject || `Confirmed: Your Callback Is Scheduled for ${custDate}`, vars)
+        .replace('[Date]', custDate).replace('[Time]', custTime)
+      const body = (renderTemplate(tpl?.body || '', vars)).replace('[Date]', custDate).replace('[Time]', custTime)
+      setEmailPrefill({ subject, body })
+      setShowEmail(true)
+    }).catch(() => {})
+  }, [pendingCb, data, profile])
+
   const { run: addTask, busy: addingTask } = useAction(async (payload) => {
-    await api('/tasks', {
+    const res = await api('/tasks', {
       method: 'POST',
       body: {
         title: payload.title, lead_id: id, type: payload.type || 'callback',
@@ -192,7 +219,9 @@ export default function LeadDetail() {
         assigned_to: data.lead.assigned_to || profile.id,
       },
     })
-  }, { toast, successMsg: 'Task added', onDone: load })
+    // a scheduled callback → pop the confirmation email right after
+    if (payload.type === 'callback' && payload.customer_tz) setPendingCb({ ...payload, task: res?.task })
+  }, { toast, successMsg: 'Callback scheduled', onDone: load })
 
   const { run: completeTask, busy: completingTask } = useAction(async (t) => {
     await api(`/tasks/${t.id}`, { method: 'PATCH', body: { status: t.status === 'open' ? 'done' : 'open' } })
