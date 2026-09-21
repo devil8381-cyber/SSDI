@@ -6,6 +6,7 @@ import './emails.mjs'
 import './docs.mjs'
 import './recordings.mjs'
 import './meta.mjs'
+import './cron.mjs'
 
 export default async (req, context) => {
   try {

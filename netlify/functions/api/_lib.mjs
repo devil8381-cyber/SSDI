@@ -117,7 +117,7 @@ export async function sendLeadEmail({ lead, agent, subject, html, purpose, baseU
   const vars = leadVars(lead, agent)
   const finalSubject = render(subject, vars)
   const finalHtml = render(html, vars) +
-    `<img src="${baseUrl}/.netlify/functions/track-open?t=${id}" width="1" height="1" alt="" style="display:none" />`
+    `<img src="${baseUrl}/api/track-open?t=${id}" width="1" height="1" alt="" style="display:none" />`
   const info = await transport.sendMail({
     from: prof.from_name ? `"${prof.from_name}" <${prof.from_email}>` : prof.from_email,
     to: lead.email,
