@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Papa from 'papaparse'
-import { Search, Plus, Upload, Download, UserPlus, ChevronLeft, ChevronRight, Users2 } from 'lucide-react'
+import { Search, Plus, Upload, Download, UserPlus, ChevronLeft, ChevronRight, Users2, MessageCircle } from 'lucide-react'
 import { api, describeError } from '../api'
 import { useAuth } from '../auth'
-import { getCallHref } from '../lib/call'
+import { getCallHref, getWhatsAppHref } from '../lib/call'
 import { useDebounced, useLatestRequest, useAction, saveDraft, loadDraft, clearDraft } from '../lib/hooks'
 import { validateForm, required, emailRule, phoneRule, maxLen, sanitizeText, fmtPhone } from '../lib/validate'
 import { useToast, Modal, DispositionBadge, Empty, Spinner, PageError, ageFrom, leadName, fmtDate } from '../ui'
@@ -272,7 +272,10 @@ export default function Leads() {
                       </td>
                       <td className="td text-slate-300" onClick={(e) => e.stopPropagation()}>
                         {r.phone
-                          ? <a href={getCallHref(r.phone) || '#'} className="hover:text-brand-400 hover:underline" title="Click to call">{fmtPhone(r.phone)}</a>
+                          ? <span className="inline-flex items-center gap-1.5">
+                            <a href={getCallHref(r.phone) || '#'} className="hover:text-brand-400 hover:underline" title="Click to call">{fmtPhone(r.phone)}</a>
+                            <a href={getWhatsAppHref(r.phone) || '#'} target="_blank" rel="noreferrer" className="text-emerald-400 hover:text-emerald-300" title="Message on WhatsApp"><MessageCircle size={13} /></a>
+                          </span>
                           : '—'}
                       </td>
                       <td className="td text-slate-300">{age ?? '—'}</td>

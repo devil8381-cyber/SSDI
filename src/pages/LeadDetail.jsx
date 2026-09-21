@@ -3,13 +3,14 @@ import { useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, ArrowRight, Mail, FilePlus2, Trash2, Save, Upload, Play, Copy, Download, Plus,
   CheckCircle2, Circle, FileText, Mic, Send, Clock, Zap, Activity, Loader2, Phone, MessageSquare, NotebookPen,
+  MessageCircle,
 } from 'lucide-react'
 import { api, describeError } from '../api'
 import { useAuth } from '../auth'
 import { useAction, useDirtyGuard, saveDraft, loadDraft, clearDraft } from '../lib/hooks'
 import { validateForm, emailRule, phoneRule, maxLen, sanitizeText, fmtPhone } from '../lib/validate'
 import { renderTemplate } from '../lib/render'
-import { getCallHref } from '../lib/call'
+import { getCallHref, getWhatsAppHref } from '../lib/call'
 import { dualCallback, zonedToUtc, timeInTz, dateInTz, IST, SCHED_ZONES } from '../lib/tz'
 import { useToast, Modal, Spinner, Empty, PageError, DispositionBadge, fmtDateTime, ageFrom } from '../ui'
 import { DISPOSITIONS, CRITERIA_REASONS, STATES, DOC_TYPES, SMTP_PURPOSES, TASK_TYPES, INTAKE_SECTIONS } from '../config'
@@ -306,6 +307,14 @@ export default function LeadDetail() {
               className="btn-ghost !border-emerald-500/30 !text-emerald-300 hover:!bg-emerald-500/10"
               title="Opens your dialer / softphone and logs the call in the timeline"
             ><Phone size={15} /> Call</a>
+          )}
+          {lead.phone && (
+            <a
+              href={getWhatsAppHref(lead.phone, `Hi ${lead.first_name}, this is ${profile?.name || 'your claim specialist'} from American Benefits Advocates regarding your SSDI claim. Do you have a couple of minutes to talk?`) || '#'}
+              target="_blank" rel="noreferrer"
+              className="btn-ghost !border-emerald-500/30 !text-emerald-300 hover:!bg-emerald-500/10"
+              title="Opens WhatsApp with a ready follow-up message"
+            ><MessageCircle size={15} /> WhatsApp</a>
           )}
           <button className="btn-ghost" onClick={() => setShowEmail(true)} disabled={!lead.email} title={lead.email ? '' : 'This lead has no email address'}>
             <Mail size={15} /> Send email

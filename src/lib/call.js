@@ -16,3 +16,15 @@ export function getCallHref(phone) {
   if (config.scheme === 'custom' && config.template) return config.template.replace('{number}', digits)
   return `${config.scheme}:${digits}`
 }
+
+// WhatsApp click-to-chat (WhatsApp's official wa.me feature — no API, no ban
+// risk). Opens WhatsApp on the customer's chat with an optional pre-typed
+// message. US leads: 10 digits → prepend the 1 country code.
+export function getWhatsAppHref(phone, message) {
+  const d = String(phone || '').replace(/\D/g, '')
+  if (d.length < 10) return null
+  const digits = d.length === 10 ? '1' + d : d
+  return message
+    ? `https://wa.me/${digits}?text=${encodeURIComponent(message)}`
+    : `https://wa.me/${digits}`
+}

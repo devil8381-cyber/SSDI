@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Mail, Phone, Sunrise, Loader2 } from 'lucide-react'
+import { Mail, Phone, Sunrise, Loader2, MessageCircle } from 'lucide-react'
 import { api, describeError } from '../api'
-import { getCallHref } from '../lib/call'
+import { getCallHref, getWhatsAppHref } from '../lib/call'
 import { useAction } from '../lib/hooks'
 import { useToast, Empty, PageError, Spinner, DispositionBadge, fmtDateTime } from '../ui'
 import { dualCallback } from '../lib/tz'
@@ -90,6 +90,14 @@ export default function Today() {
                       onClick={async () => { try { await api(`/leads/${i.id}/call`, { method: 'POST' }) } catch { /* logging is best-effort */ } }}
                       title="Click to call (logged in timeline)"
                     ><Phone size={13} /> Call</a>
+                  )}
+                  {i.phone && (
+                    <a
+                      href={getWhatsAppHref(i.phone, 'Hi ' + (i.first_name || 'there') + ', this is your claim specialist from American Benefits Advocates regarding your SSDI claim. Do you have a couple of minutes to talk?') || '#'}
+                      target="_blank" rel="noreferrer"
+                      className="btn-ghost !px-2 !py-1.5 text-xs !text-emerald-300"
+                      title="Opens WhatsApp with a ready follow-up message"
+                    ><MessageCircle size={13} /> WhatsApp</a>
                   )}
                 </div>
               </div>
