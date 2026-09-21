@@ -568,8 +568,29 @@ export async function importLeadRows(rows, { source = 'import', campaign = null,
   }
   const toInsert = [], updates = []
   let duplicates = 0
+  // Name cleaner: when a full-name column lands in first_name (e.g. the sheet
+  // has "Name" + "Last Name"), the surname ends up in BOTH fields and the
+  // lead displays "Eddiei Brown Brown". Strip the duplicated surname, split
+  // multi-word names without a last name, and title-case all-lowercase names.
+  const cleanName = (first, last) => {
+    let f = clean(first, 100) || ''
+    let l = clean(last, 100) || ''
+    if (f && l) {
+      const re = new RegExp('\\s*' + l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$', 'i')
+      f = f.replace(re, '').trim()
+    } else if (f && !l && f.includes(' ')) {
+      const parts = f.split(/\s+/)
+      l = parts.pop()
+      f = parts.join(' ')
+    }
+    const tc = (s) => (s && s === s.toLowerCase()) ? s.replace(/\b\w/g, (c) => c.toUpperCase()) : s
+    return { first: tc(f), last: tc(l) }
+  }
   for (const raw of list) {
     const r = mapRow(raw)
+    const names = cleanName(r.first_name, r.last_name)
+    r.first_name = names.first
+    r.last_name = names.last
     const phoneKey = clean(r.phone, 30) ? 'p' + String(r.phone).replace(/\D/g, '').slice(-10) : null
     const emailL = (clean(r.email, 200) || '').toLowerCase()
     const emailKey = emailL ? 'e' + emailL : null
