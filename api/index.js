@@ -1,6 +1,8 @@
 // Vercel entry point — adapts the Web-standard router (shared with Netlify)
 // to Vercel's Node function signature. Same code runs on both hosts.
 import { handle } from '../netlify/functions/api/_router.mjs'
+// registering ALL routes (core, leads, emails, docs, recordings, meta, cron)
+import '../netlify/functions/api/api.mjs'
 
 // waitUntil shim: queued background work (welcome emails, follow-up rules,
 // CAPI signals) is flushed BEFORE the response closes so it reliably
@@ -14,7 +16,10 @@ const context = {
 
 function nodeReqToWeb(req) {
   const proto = req.headers['x-forwarded-proto'] || 'https'
-  const url = `${proto}://${req.headers.host || 'localhost'}${req.url}`
+  // Vercel's legacy route rewrite replaces req.url with the DESTINATION — the
+  // original client path arrives in the x-original-path header instead.
+  const original = req.headers['x-original-path'] || req.url
+  const url = `${proto}://${req.headers.host || 'localhost'}${original}`
   const headers = new Headers()
   for (const [k, v] of Object.entries(req.headers || {})) {
     if (Array.isArray(v)) v.forEach((x) => headers.append(k, x))
